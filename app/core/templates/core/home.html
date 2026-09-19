@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Documentos enviados</title>
+  <link rel="stylesheet" href="{{ STATIC_URL|default:'/static/' }}admin/css/base.css">
+</head>
+<body style="padding:24px;font-family:Roboto,Arial,sans-serif">
+  <h1>Documentos enviados</h1>
+  <p><a href="/admin/core/documento/add/">Enviar novo arquivo (admin do Django)</a></p>
+  {% if documentos %}
+    <ul>
+      {% for doc in documentos %}
+        <li>
+          <a href="{{ doc.arquivo.url }}">{{ doc.titulo }}</a>
+          &mdash; {{ doc.nome_arquivo }} ({{ doc.tamanho|filesizeformat }})
+          em {{ doc.enviado_em }}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>Nenhum arquivo enviado ainda.</p>
+  {% endif %}
+</body>
+</html>
