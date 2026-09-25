@@ -4,23 +4,134 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Documentos enviados</title>
-  <link rel="stylesheet" href="{{ STATIC_URL|default:'/static/' }}admin/css/base.css">
+  <style>
+    :root {
+      --ink: #26313c;
+      --terra: #b85042;
+      --sand: #e7e8d1;
+      --card: #f1f2ee;
+      --body: #3a4750;
+      --muted: #7a8894;
+      --ok: #2f6b4f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 40px 16px 64px;
+      background: #fff;
+      color: var(--body);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    .wrap { max-width: 780px; margin: 0 auto; }
+    h1 { margin: 0 0 4px; font-size: 28px; color: var(--ink); }
+    .sub { margin: 0 0 32px; color: var(--muted); font-size: 14px; }
+
+    .msg { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+    .msg.success { background: #e6f2ea; color: var(--ok); }
+    .msg.error { background: #fbeae8; color: var(--terra); }
+
+    form { background: var(--card); border-radius: 12px; padding: 24px; margin-bottom: 40px; }
+    .field { margin-bottom: 18px; }
+    .field:last-of-type { margin-bottom: 22px; }
+    label { display: block; font-weight: 600; color: var(--ink); margin-bottom: 6px; font-size: 14px; }
+    input[type="text"], input[type="file"] {
+      width: 100%; padding: 10px 12px; font-size: 15px; font-family: inherit;
+      border: 1px solid #d3d8d4; border-radius: 8px; background: #fff; color: var(--body);
+    }
+    input[type="text"]:focus, input[type="file"]:focus {
+      outline: 2px solid var(--terra); outline-offset: 1px; border-color: transparent;
+    }
+    .help { margin-top: 6px; font-size: 13px; color: var(--muted); }
+    .errors { margin: 6px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--terra); }
+    button {
+      background: var(--terra); color: #fff; border: 0; border-radius: 8px;
+      padding: 11px 22px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer;
+    }
+    button:hover { background: #a3453a; }
+
+    h2 { font-size: 18px; color: var(--ink); margin: 0 0 14px; }
+    ul.docs { list-style: none; margin: 0; padding: 0; }
+    ul.docs li {
+      padding: 14px 0; border-bottom: 1px solid #eceee9;
+      display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+    }
+    ul.docs li:first-child { border-top: 1px solid #eceee9; }
+    ul.docs a { color: var(--terra); font-weight: 600; text-decoration: none; }
+    ul.docs a:hover { text-decoration: underline; }
+    .meta { color: var(--muted); font-size: 13px; white-space: nowrap; }
+    .fname { display: block; color: var(--muted); font-size: 13px; font-weight: 400; margin-top: 2px; }
+    .vazio { color: var(--muted); font-style: italic; }
+    footer { margin-top: 40px; font-size: 13px; color: var(--muted); }
+    footer a { color: var(--muted); }
+  </style>
 </head>
-<body style="padding:24px;font-family:Roboto,Arial,sans-serif">
-  <h1>Documentos enviados</h1>
-  <p><a href="/admin/core/documento/add/">Enviar novo arquivo (admin do Django)</a></p>
+<body>
+<div class="wrap">
+
+  <h1>Documentos</h1>
+  <p class="sub">Os arquivos enviados ficam em um volume Docker e sobrevivem à recriação dos containers.</p>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="msg {{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <ul class="errors">
+        {% for erro in form.non_field_errors %}<li>{{ erro }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+
+    <div class="field">
+      <label for="{{ form.titulo.id_for_label }}">Título</label>
+      {{ form.titulo }}
+      {% if form.titulo.errors %}
+        <ul class="errors">
+          {% for erro in form.titulo.errors %}<li>{{ erro }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+
+    <div class="field">
+      <label for="{{ form.arquivo.id_for_label }}">Arquivo</label>
+      {{ form.arquivo }}
+      <p class="help">{{ form.arquivo.help_text }}</p>
+      {% if form.arquivo.errors %}
+        <ul class="errors">
+          {% for erro in form.arquivo.errors %}<li>{{ erro }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+
+    <button type="submit">Enviar arquivo</button>
+  </form>
+
+  <h2>Enviados ({{ documentos|length }})</h2>
+
   {% if documentos %}
-    <ul>
+    <ul class="docs">
       {% for doc in documentos %}
         <li>
-          <a href="{{ doc.arquivo.url }}">{{ doc.titulo }}</a>
-          &mdash; {{ doc.nome_arquivo }} ({{ doc.tamanho|filesizeformat }})
-          em {{ doc.enviado_em }}
+          <span>
+            <a href="{{ doc.arquivo.url }}">{{ doc.titulo }}</a>
+            <span class="fname">{{ doc.nome_arquivo }} &middot; {{ doc.tamanho|filesizeformat }}</span>
+          </span>
+          <span class="meta">{{ doc.enviado_em|date:"d/m/Y H:i" }}</span>
         </li>
       {% endfor %}
     </ul>
   {% else %}
-    <p>Nenhum arquivo enviado ainda.</p>
+    <p class="vazio">Nenhum arquivo enviado ainda.</p>
   {% endif %}
+
+  <footer>
+    <a href="/admin/">Admin do Django</a> &middot; <a href="/healthz/">healthz</a>
+  </footer>
+
+</div>
 </body>
 </html>

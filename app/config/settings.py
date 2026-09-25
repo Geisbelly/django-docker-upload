@@ -91,3 +91,14 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # upload grande vai direto para arquivo temporario em disco
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+
+# Regra de negocio do upload, validada no model (core/validators.py).
+# O nginx continua sendo o limite externo (client_max_body_size): ele barra o
+# corpo gigante antes de chegar na aplicacao; estes valores sao o limite fino,
+# com mensagem de erro para o usuario.
+UPLOAD_MAX_SIZE_MB = int(os.environ.get("UPLOAD_MAX_SIZE_MB", "10"))
+UPLOAD_MAX_SIZE_BYTES = UPLOAD_MAX_SIZE_MB * 1024 * 1024
+UPLOAD_ALLOWED_EXTENSIONS = env_list(
+    "UPLOAD_ALLOWED_EXTENSIONS",
+    "pdf,doc,docx,odt,txt,csv,xls,xlsx,ods,png,jpg,jpeg,gif,webp",
+)
