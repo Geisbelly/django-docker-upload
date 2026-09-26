@@ -18,27 +18,31 @@ animação, com os 16 passos desde o build da imagem.
 
 Alvo: **12 a 15 minutos** de fala + demo, deixando espaço para perguntas.
 
-| # | Slide | Tempo | A mensagem que precisa passar |
+| # | Slide | Tempo | Item do enunciado |
 |---|---|---|---|
-| 1 | Capa | 0:30 | O que é o projeto, em uma frase |
-| 2 | Escopo | 0:30 | Os quatro requisitos estão cobertos, e onde |
-| 3 | Arquitetura | 1:45 | **Slide central.** Caminho da requisição + inventário: imagens, containers, volumes |
-| 4 | Computação em nuvem | 1:30 | Container × VM, imagem portátil, IaC, stateless, 12-Factor |
-| 5 | Simulador | 2:00 | **Slide central.** Animado: a aplicação grava e lê no volume; `down` não é `down -v` |
-| 6 | Caminho do upload | 1:15 | O nginx só repassa; validação e gravação acontecem dentro do container |
-| 7 | Banco de dados | 0:45 | O schema real: uma tabela minha, `arquivo` é `varchar(100)` |
-| 8 | Arquivos | 0:45 | Como o caminho é montado, o que vai para o banco, o que fica no disco |
-| 9 | Validação | 1:30 | As camadas que recusam: sessão, nome, extensão, tamanho, conteúdo |
-| 10 | Demo | 3:00 | Executar ao vivo |
-| 11 | Fechamento | 1:15 | Levantar as fraquezas antes da banca |
+| 1 | Capa | 0:30 | — |
+| 2 | Escopo | 0:30 | — |
+| 3 | Arquitetura | 1:45 | **1** · visão geral, portas, rede, volumes |
+| 4 | Computação em nuvem | 1:15 | — (conteúdo da disciplina) |
+| 5 | Dockerfile | 1:30 | **2** · imagem da aplicação |
+| 6 | Docker Compose | 1:30 | **3** · orquestração, serviço a serviço |
+| 7 | Nginx | 1:30 | **5** · proxy reverso e trechos da configuração |
+| 8 | Simulador | 1:45 | **6** · persistência, animada |
+| 9 | Caminho do upload | 1:15 | **7** · fluxo do upload |
+| 10 | Banco de dados | 0:45 | **4** e **6** · schema real |
+| 11 | Arquivos | 0:45 | **6** e **7** · caminho no disco |
+| 12 | Validação | 1:15 | — (segurança) |
+| 13 | Demo | 3:00 | — |
+| 14 | Análise técnica | 1:30 | **8** · 3 vantagens, 3 limitações, 3 melhorias |
 
-Total: **14min45** contando a demo — o deck está no teto do alvo. Se a banca for
-rígida com o tempo, os slides **6**, **7** e **8** se resumem em uma frase cada
-sem perder o argumento.
+O item **4** (comunicação entre containers, DNS interno, portas internas e
+externas) está no slide 3 e volta no 6 e no 10.
 
-Os que **não** podem ser pulados são o **3**, o **4**, o **5** e o **9** — o 4
-amarra o trabalho à disciplina, o 3 e o 5 provam o requisito principal, e o 9
-responde a pergunta de segurança antes que ela venha.
+Total: **18min45** contando a demo — acima do alvo original de 12 a 15 minutos,
+porque o enunciado pede oito seções obrigatórias. Se a banca limitar o tempo, os
+que se resumem em uma frase são o **4**, o **11** e o **12**; os que **não** podem
+ser pulados são o **3**, o **5**, o **6**, o **7**, o **8** e o **14**, porque cada
+um responde diretamente a um item da avaliação.
 
 ---
 
@@ -585,6 +589,20 @@ A `slim` usa glibc, então as *wheels* pré-compiladas do PyPI funcionam direto 
 inclusive a do `psycopg[binary]`. A Alpine usa musl, o que costuma forçar a
 compilação das dependências no build: mais lento e com mais chance de erro. A
 `slim` é o meio-termo entre tamanho e compatibilidade.
+
+**Por que só uma dependência de sistema, e por que essa?**
+O `postgresql-client` entra pelo `pg_isready`, que o `entrypoint.sh` usa para
+esperar o banco. O driver não precisa de nada do sistema: o `requirements.txt`
+pede `psycopg[binary]`, e o extra `binary` empacota a própria `libpq` dentro da
+wheel — é o que dispensa compilador no build. Dá para provar ao vivo:
+
+```bash
+docker compose exec web python -c "import psycopg; print(psycopg.pq.__impl__)"
+```
+
+Devolve `binary`. A `libpq5` do sistema até é instalada, mas como dependência do
+`postgresql-client`, e o driver não a usa. Eu cheguei a declará-la explicitamente
+no `Dockerfile` e removi depois de verificar isso.
 
 **Por que copiar o `requirements.txt` antes do código?**
 Cada instrução do Dockerfile vira uma camada com cache. Se eu copiasse o código

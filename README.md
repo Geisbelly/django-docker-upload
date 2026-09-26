@@ -1,5 +1,9 @@
 # Django + Gunicorn + Nginx + PostgreSQL com upload em volume
 
+> **Documentação técnica da solução:** [`DOCUMENTACAO.md`](DOCUMENTACAO.md) —
+> arquitetura, imagem Docker, orquestração, comunicação entre containers, proxy
+> reverso, persistência, fluxo do upload e análise técnica.
+
 Aplicação Django containerizada em três serviços, com upload de arquivos
 persistido em um volume Docker. O upload tem formulário próprio na página
 inicial, **exige sessão** e passa por validação em camadas no model; o admin do
@@ -158,6 +162,7 @@ docker compose down -v
 
 | Arquivo | O quê |
 |---|---|
+| **`DOCUMENTACAO.md`** | **documentação técnica da solução** — os oito itens pedidos no enunciado da defesa |
 | `apresentacao-defesa.html` | deck da defesa, 8 slides, com simulador animado no slide 5 (`N` notas, `O` índice, `P` simulador, `T` cronômetro, `F` tela cheia) |
 | `DEFESA.md` | roteiro, decisões, funcionamento e perguntas prováveis |
 

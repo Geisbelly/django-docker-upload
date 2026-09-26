@@ -4,8 +4,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
+# postgresql-client e a unica dependencia de sistema que a aplicacao precisa:
+# ela traz o pg_isready, que o entrypoint usa para esperar o banco. O libpq vem
+# junto (dependencia do proprio pacote) e nao e usado pelo driver: o
+# psycopg[binary] empacota a propria libpq dentro da wheel.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 postgresql-client \
+    && apt-get install -y --no-install-recommends postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
