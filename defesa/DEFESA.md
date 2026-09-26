@@ -1,7 +1,11 @@
 # Roteiro de defesa
 
-Material de apoio para a apresentação do projeto. O deck está em
-`apresentacao-defesa.html` — abre no navegador, sem instalar nada. As notas do
+Geisbelly Victória · Nicole França Martins
+
+Material de apoio para a apresentação do projeto. O deck está ao lado, em
+`apresentacao-defesa.html` — abre no navegador, sem instalar nada. A
+**documentação técnica** exigida pelo enunciado é outro arquivo, na raiz do
+repositório: [`DOCUMENTACAO.md`](../DOCUMENTACAO.md). As notas do
 apresentador estão dentro dele: tecla `N` abre o painel, `O` abre o índice dos
 slides e `T` liga o cronômetro.
 
@@ -340,7 +344,7 @@ recusar antes de a seguinte gastar trabalho.
 | # | Camada | O que ela recusa | Onde está |
 |---|---|---|---|
 | 0 | sessão | quem não está autenticado — vale para a home e para o download | `core/views.py` |
-| 1 | nginx | corpo acima de 100M, antes de gastar worker | `nginx/default.conf` |
+| 1 | nginx | corpo acima de 100M, antes de gastar worker | `nginx/default.conf.template` |
 | 2 | nome do arquivo | separador de caminho, quebra de linha, caractere de controle ou invisível, nome longo demais | `core/security.py` |
 | 3 | extensão e tamanho | extensão fora da lista do `.env`, arquivo acima de 10 MB | `core/validators.py` |
 | 4 | conteúdo | primeiros bytes que não correspondem à extensão | `core/validators.py` |

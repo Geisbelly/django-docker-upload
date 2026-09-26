@@ -1,5 +1,7 @@
 # Documentação técnica
 
+**Geisbelly Victória** · **Nicole França Martins** — Computação em Nuvem
+
 Aplicação Django containerizada em três serviços, com upload de arquivos
 persistido em volume Docker.
 
@@ -501,7 +503,7 @@ proxy com um papel só. O custo está registrado na seção 8.
 
 ### A configuração, trecho a trecho
 
-Arquivo: [`nginx/default.conf`](nginx/default.conf).
+Arquivo: [`nginx/default.conf.template`](nginx/default.conf.template).
 
 ```nginx
 upstream django {
@@ -906,11 +908,11 @@ sequenceDiagram
 | [`Dockerfile`](Dockerfile) | imagem da aplicação |
 | [`entrypoint.sh`](entrypoint.sh) | preparação do ambiente no boot |
 | [`docker-compose.yml`](docker-compose.yml) | serviços, rede, volumes |
-| [`nginx/default.conf`](nginx/default.conf) | proxy reverso |
+| [`nginx/default.conf.template`](nginx/default.conf.template) | proxy reverso |
 | [`app/config/settings.py`](app/config/settings.py) | `MEDIA_ROOT`, banco, segurança |
 | [`app/core/models.py`](app/core/models.py) | o model `Documento` e os validadores |
 | [`app/core/security.py`](app/core/security.py) | assinaturas, nome seguro, tipos servidos |
 | [`app/core/views.py`](app/core/views.py) | home, healthcheck e a entrega de `/media/` |
 | [`app/core/tests.py`](app/core/tests.py) | 41 testes |
-| [`DEFESA.md`](DEFESA.md) | roteiro da apresentação e perguntas prováveis |
-| [`apresentacao-defesa.html`](apresentacao-defesa.html) | o deck, com simulador animado |
+| [`defesa/DEFESA.md`](defesa/DEFESA.md) | roteiro da apresentação e perguntas prováveis |
+| [`defesa/apresentacao-defesa.html`](defesa/apresentacao-defesa.html) | o deck, com simulador animado |
