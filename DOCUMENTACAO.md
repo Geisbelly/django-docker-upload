@@ -24,7 +24,8 @@ foram lidos da stack em execução.
 ## 1. Visão geral da arquitetura
 
 A solução tem **três containers**, uma **rede interna** criada pelo Compose e
-**dois volumes nomeados**. Apenas o nginx publica porta no host.
+**quatro volumes nomeados**. Apenas o nginx publica porta no host, e a entrada é
+por **HTTPS**.
 
 ```mermaid
 flowchart LR
@@ -32,17 +33,19 @@ flowchart LR
 
     subgraph rede["Rede Docker &nbsp;·&nbsp; django-docker-upload_default &nbsp;·&nbsp; bridge com DNS interno"]
         direction LR
-        nginx["<b>nginx</b><br/>nginx:1.27-alpine<br/>escuta na porta 80"]
+        nginx["<b>nginx</b><br/>nginx:1.27-alpine<br/>TLS na 443, 301 na 80"]
         web["<b>web</b><br/>python:3.12-slim<br/>Gunicorn, expose 8000"]
         db["<b>db</b><br/>postgres:16-alpine<br/>5432, sem porta publicada"]
     end
 
     media[("volume<br/><b>media_data</b><br/>/vol/media")]
+    logs[("volumes do proxy<br/><b>nginx_certs</b> · <b>nginx_logs</b>")]
     pg[("volume<br/><b>postgres_data</b><br/>/var/lib/postgresql/data")]
 
-    cliente -->|"HTTP · host 8080 → container 80"| nginx
+    cliente -->|"HTTPS · host 8443 → container 443"| nginx
     nginx -->|"proxy_pass http://web:8000"| web
     web -->|"TCP · db:5432"| db
+    nginx -->|"certificado e logs"| logs
     web -->|"lê e grava os uploads"| media
     db -->|"lê e grava os dados"| pg
 ```
@@ -51,7 +54,7 @@ flowchart LR
 
 | Serviço | Imagem | Responsabilidade |
 |---|---|---|
-| `nginx` | build de `nginx/Dockerfile`, sobre `nginx:1.27-alpine` | Proxy reverso. Único ponto de entrada; encaminha **todas** as rotas para a aplicação. |
+| `nginx` | build de `nginx/Dockerfile`, sobre `nginx:1.27-alpine` | Proxy reverso e **terminação TLS**. Único ponto de entrada; encaminha **todas** as rotas para a aplicação. |
 | `web` | build do `Dockerfile`, sobre `python:3.12-slim` | Django servido por Gunicorn. Valida, grava, lê e responde. |
 | `db` | `postgres:16-alpine` (usada direto do registry) | Banco de dados. |
 
@@ -59,7 +62,8 @@ flowchart LR
 
 | Onde | Porta | Exposição |
 |---|---|---|
-| host → nginx | `${NGINX_PORT:-8080}` → `80` | **publicada** (`ports`) — a única alcançável de fora |
+| host → nginx (HTTPS) | `${NGINX_TLS_PORT:-8443}` → `443` | **publicada** — é por onde se usa a aplicação |
+| host → nginx (HTTP) | `${NGINX_PORT:-8080}` → `80` | **publicada** — só devolve `301` para o HTTPS |
 | nginx → web | `8000` | interna (`expose`) — visível só na rede do Compose |
 | web → db | `5432` | interna — o serviço `db` não declara porta nenhuma |
 
@@ -69,8 +73,11 @@ flowchart LR
 |---|---|---|---|
 | `media_data` | `/vol/media` | arquivos enviados pelos usuários | só no `web` |
 | `postgres_data` | `/var/lib/postgresql/data` | dados do PostgreSQL | só no `db` |
+| `nginx_certs` | `/etc/nginx/certs` | certificado TLS e chave privada | só no `nginx` |
+| `nginx_logs` | `/var/log/nginx` | logs de acesso e de erro do proxy | só no `nginx` |
 
-O `nginx` **não monta volume nenhum**: ele não lê nem escreve arquivo.
+O `nginx` tem volume, mas **não toca na mídia**: os dois que ele monta guardam
+coisas dele mesmo. Quem lê e escreve arquivo enviado é a aplicação.
 
 > **Decisão:** três containers em vez de um só porque cada um tem um processo e
 > um ciclo de vida próprios. Dá para atualizar a versão do nginx sem reconstruir
@@ -346,21 +353,28 @@ web:
 nginx:
   build: ./nginx
   restart: unless-stopped
+  environment:
+    TLS_PORT_PUBLICA: ${NGINX_TLS_PORT:-8443}
+    TLS_CN: ${TLS_CN:-localhost}
   ports:
     - "${NGINX_PORT:-8080}:80"
+    - "${NGINX_TLS_PORT:-8443}:443"
+  volumes:
+    - nginx_certs:/etc/nginx/certs
+    - nginx_logs:/var/log/nginx
   depends_on:
     - web
 ```
 
 | Aspecto | Valor |
 |---|---|
-| **Imagem** | construída de `nginx/Dockerfile`, que só copia a configuração sobre `nginx:1.27-alpine` |
-| **Responsabilidade** | proxy reverso e único ponto de entrada |
-| **Portas** | `${NGINX_PORT:-8080}:80` — **a única publicada no host** |
-| **Variáveis** | nenhuma; só a `NGINX_PORT`, lida pelo Compose na hora de mapear a porta |
-| **Volumes** | **nenhum** |
+| **Imagem** | construída de `nginx/Dockerfile`, sobre `nginx:1.27-alpine`, com `openssl` e a configuração |
+| **Responsabilidade** | proxy reverso, terminação TLS e registro de acesso |
+| **Portas** | `8443:443` (HTTPS, o caminho real) e `8080:80` (só redireciona) — **as únicas publicadas** |
+| **Variáveis** | `TLS_PORT_PUBLICA`, usada pelo `envsubst` no redirecionamento, e `TLS_CN`, o nome no certificado |
+| **Volumes** | `nginx_certs` para o certificado e `nginx_logs` para os logs |
 | **Dependências** | `depends_on: web` (ordem de subida, sem healthcheck) |
-| **Inicialização** | `restart: unless-stopped` |
+| **Inicialização** | `restart: unless-stopped`; o `entrypoint.sh` gera o certificado se ele não existir |
 
 > **Por que construir uma imagem para o nginx em vez de montar a config por bind
 > mount?** O bind mount amarraria o container a um caminho da máquina do host, o
@@ -373,6 +387,8 @@ nginx:
 volumes:
   postgres_data:   # dados do PostgreSQL
   media_data:      # arquivos enviados pelo upload
+  nginx_certs:     # certificado TLS gerado na primeira subida
+  nginx_logs:      # logs de acesso e de erro do proxy
 ```
 
 Nenhuma rede é declarada explicitamente: o Compose cria a rede padrão do projeto,
@@ -479,7 +495,7 @@ Nesta solução ele faz **três coisas, e só**:
    worker do Gunicorn.
 3. **Repasse de cabeçalhos** — informa à aplicação por onde a requisição entrou.
 
-Ele **não serve arquivo**: não monta volume e encaminha todas as rotas, inclusive
+Ele **não serve arquivo de usuário**: encaminha todas as rotas, inclusive
 `/static/` e `/media/`, para a aplicação. Foi uma decisão deliberada de manter o
 proxy com um papel só. O custo está registrado na seção 8.
 
@@ -541,8 +557,9 @@ e a verificação de CSRF **reprovava todo POST com 403**.
 
 Sem eles, a aplicação enxergaria todas as requisições vindo do IP do container do
 nginx. O `X-Forwarded-Proto` diz se a origem era HTTP ou HTTPS, e o Django o lê
-por causa do `SECURE_PROXY_SSL_HEADER` no `settings.py` — é o que fará o TLS
-funcionar quando ele entrar, sem mudar o código.
+por causa do `SECURE_PROXY_SSL_HEADER` no `settings.py` — é o que faz o Django
+saber que a origem era HTTPS, mesmo recebendo a requisição em HTTP pela rede
+interna, e é o que permite os cookies `Secure`.
 
 ```nginx
         proxy_redirect off;
@@ -555,6 +572,101 @@ funcionar quando ele entrar, sem mudar o código.
 nginx reescrevê-lo. `proxy_read_timeout 120s` é **igual** ao `--timeout 120` do
 Gunicorn, de propósito: se o do nginx fosse menor, o cliente levaria **504**
 enquanto o worker ainda estivesse processando o upload.
+
+### TLS: onde o HTTPS comeca e termina
+
+```nginx
+server {
+    listen 443 ssl;
+    http2 on;
+
+    ssl_certificate     /etc/nginx/certs/server.crt;
+    ssl_certificate_key /etc/nginx/certs/server.key;
+
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:SSL:10m;
+}
+```
+
+O HTTPS **termina no proxy**: do nginx para o Gunicorn o tráfego corre em HTTP,
+dentro da rede interna, que não é alcançável de fora. É o desenho normal — TLS de
+ponta a ponta só se justifica quando a rede entre proxy e aplicação não é
+confiável.
+
+`ssl_protocols TLSv1.2 TLSv1.3` deixa de fora as versões antigas; 1.0 e 1.1 estão
+obsoletos desde 2021.
+
+**O certificado é autoassinado**, gerado pelo `nginx/entrypoint.sh` na primeira
+subida e guardado no volume `nginx_certs`:
+
+```sh
+openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+  -subj "/C=BR/O=Defesa Computacao em Nuvem/CN=${CN}" \
+  -addext "subjectAltName=DNS:${CN},DNS:localhost,IP:127.0.0.1"
+```
+
+O navegador vai avisar que não confia nele, e está certo: quem atesta um
+certificado é uma autoridade certificadora, e aqui não há nenhuma. O
+autoassinado entrega a **criptografia do tráfego**; o que falta é a **prova de
+identidade**. Em produção o passo é Let's Encrypt — está na seção 8.
+
+Ele fica num volume de propósito: gerado a cada boot, mudaria de impressão
+digital toda vez e invalidaria qualquer exceção já aceita no navegador.
+
+### O redirecionamento de HTTP, e por que a porta entra por variável
+
+```nginx
+server {
+    listen 80;
+    return 301 https://$host:${TLS_PORT_PUBLICA}$request_uri;
+}
+```
+
+A porta 80 não serve nada: devolve `301` e acabou. O detalhe é o
+`${TLS_PORT_PUBLICA}`. Dentro do container o TLS está na 443, mas no host ele
+está publicado em 8443 — redirecionar para `https://$host` mandaria o navegador
+para a 443 **do host**, onde não há nada. A variável vem do Compose e é
+substituída pelo `envsubst` do entrypoint da própria imagem, e é por isso que o
+arquivo é um `default.conf.template`.
+
+É o mesmo tipo de erro do `$host` contra `$http_host`: esquecer a porta quando
+ela não é a padrão.
+
+### Os logs
+
+```nginx
+log_format detalhado '$remote_addr - $remote_user [$time_local] '
+                     '"$request" $status $body_bytes_sent '
+                     '"$http_referer" "$http_user_agent" '
+                     'req=${request_time}s upstream=${upstream_response_time}s';
+
+access_log /var/log/nginx/access.log detalhado;
+access_log /dev/stdout detalhado;
+error_log  /var/log/nginx/error.log warn;
+```
+
+Ao formato `combined` padrão foram acrescentados **dois tempos**:
+`request_time`, quanto durou a requisição inteira do ponto de vista do nginx, e
+`upstream_response_time`, quanto o Gunicorn levou para responder. A diferença
+entre os dois é o tempo gasto na rede e no proxy — é assim que se separa
+lentidão da aplicação de lentidão do caminho.
+
+Cada log tem **dois destinos**: o arquivo no volume, que sobrevive ao container,
+e a saída padrão, de onde o `docker compose logs` lê. Sem o segundo, o volume
+quebraria o `docker logs`; sem o primeiro, o histórico morreria com o container.
+
+Duas linhas reais, um acesso e um redirecionamento:
+
+```
+192.168.65.1 - - [26/Sep/2026:13:57:14 +0000] "GET /accounts/login/ HTTP/2.0" 200 5367 "-" "curl/8.7.1" req=0.024s upstream=0.023s
+192.168.65.1 - - [26/Sep/2026:13:57:14 +0000] "GET / HTTP/1.1" 301 169 "-" "curl/8.7.1" req=0.000s upstream=-s
+```
+
+O `upstream=-s` da segunda diz que aquela requisição **não chegou à aplicação**:
+foi respondida pelo próprio nginx, com o `301`.
+
+**Limite conhecido:** não há rotação. Um `access.log` cresce sem parar, e em
+produção isso pede `logrotate` ou coleta centralizada — está na seção 8.
 
 ---
 
@@ -610,15 +722,31 @@ No banco fica apenas o **caminho relativo**, numa coluna `varchar(100)` — os b
 nunca entram no Postgres. Binário dentro do banco infla o `pg_dump`, deixa o
 restore lento e prende o arquivo ao ciclo de vida do banco.
 
-### Por que são dois volumes, e não três nem um
+### Por que quatro volumes, e não menos
 
-- **Não um só:** o `postgres_data` é escrito pelo processo do Postgres, que precisa
-  mandar sozinho naquele diretório; o `media_data` guarda arquivo de usuário.
-  Juntá-los misturaria permissões e tornaria o backup de um dependente do outro.
-- **Não três:** existia um `static_data` para a saída do `collectstatic`, e ele foi
-  **removido**. Aquele diretório é regenerado a cada boot a partir da própria
-  imagem — não é estado, é resultado derivado. Persistir isso só acumularia
-  arquivo de build antigo que ninguém remove.
+Cada um guarda um tipo de estado com ciclo de vida próprio:
+
+- **`postgres_data` e `media_data` não se juntam:** o primeiro é escrito pelo
+  processo do Postgres, que precisa mandar sozinho naquele diretório, e se
+  recupera com `pg_dump`; o segundo guarda arquivo de usuário, que se copia com
+  `tar`. Juntá-los misturaria permissões e tornaria o backup de um dependente do
+  outro.
+- **`nginx_certs` existe para o certificado não mudar a cada boot.** Se fosse
+  gerado toda vez, a impressão digital mudaria e o navegador voltaria a avisar,
+  além de invalidar qualquer exceção que já tivesse sido aceita.
+- **`nginx_logs` guarda o histórico de acesso e de erro**, que de outro modo
+  morreria com o container.
+- **O que ficou de fora:** existia um `static_data` para a saída do
+  `collectstatic`, e ele foi **removido**. Aquele diretório é regenerado a cada
+  boot a partir da própria imagem — não é estado, é resultado derivado.
+
+> **Uma armadilha que custou tempo:** a imagem do nginx traz `access.log` e
+> `error.log` como *symlinks* para `/dev/stdout` e `/dev/stderr`. Como um volume
+> vazio montado sobre um diretório da imagem **copia o conteúdo dele**, o volume
+> nasceu com os symlinks dentro, e escrever no "arquivo" continuava caindo na
+> saída padrão — o volume ficava vazio. A solução foi apagar os symlinks no
+> `Dockerfile`, para o diretório nascer limpo. É o mesmo mecanismo que faz o
+> `/vol/media` herdar o dono `appuser`, com a consequência invertida.
 
 ### O que acontece se os containers forem removidos e recriados
 
@@ -627,7 +755,7 @@ restore lento e prende o arquivo ao ciclo de vida do banco.
 | `docker compose stop` | parados | mantida | mantidos | **intactos** |
 | `docker compose down` | **removidos** | **removida** | **mantidos** | **intactos** |
 | `docker compose up -d --build` | recriados, imagem nova | recriada | remontados | **intactos** |
-| `docker compose down -v` | removidos | removida | **apagados** | **perdidos** |
+| `docker compose down -v` | removidos | removida | **apagados** | **perdidos** (e o certificado e os logs também) |
 
 Volume nomeado é um objeto **separado** no Docker: não pertence a container
 nenhum. O `down` remove containers e rede; o volume fica, e é remontado no
@@ -745,17 +873,19 @@ sequenceDiagram
    pessoa autenticada vê e baixa os arquivos de todos. Não há separação por dono
    nem uso do sistema de permissões do Django.
 
-3. **Presa a um único host, e sem TLS.** O volume local não é visto por réplicas
-   em nós diferentes, o `migrate` roda no boot do `web` (seguro com uma réplica,
-   arriscado com várias subindo juntas), e o tráfego é HTTP puro. Também não há
-   centralização de logs: o que existe é o `docker logs`.
+3. **Presa a um único host, e com certificado próprio.** O volume local não é
+   visto por réplicas em nós diferentes, o `migrate` roda no boot do `web`
+   (seguro com uma réplica, arriscado com várias subindo juntas), e o
+   certificado TLS é autoassinado — o navegador avisa, porque nenhuma autoridade
+   o atesta. Os logs ficam num volume, mas sem rotação nem centralização.
 
 ### Três melhorias para aproximar de produção
 
-1. **TLS no nginx**, com redirecionamento de HTTP para HTTPS e HSTS. O
-   `SECURE_PROXY_SSL_HEADER` e as variáveis `DJANGO_SECURE_COOKIES` /
-   `DJANGO_HSTS_SECONDS` já estão no `settings.py` esperando por isso — é
-   configuração, não reescrita.
+1. **Certificado de uma autoridade** no lugar do autoassinado — com Let's
+   Encrypt e renovação automática —, e **HSTS** ligado junto, pela variável
+   `DJANGO_HSTS_SECONDS` que já existe. Hoje ela fica em `0` de propósito: HSTS
+   com certificado próprio em `localhost` prende o navegador a HTTPS naquele
+   host por semanas, e atrapalha mais do que protege.
 
 2. **Trocar o volume local por *object storage*** (S3 ou MinIO) e **tirar o
    `migrate` do boot**, rodando-o como job separado. São as duas mudanças que

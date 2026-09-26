@@ -12,8 +12,9 @@ Django continua disponível como caminho alternativo.
 ## Arquitetura
 
 ```
-          :8080
- navegador ──► nginx (proxy reverso, e só isso)
+          :8443 (https)          :8080 (http) ──► 301 para o https
+ navegador ──► nginx (proxy reverso + TLS)
+                 │  volumes nginx_certs (certificado) e nginx_logs (acesso/erro)
                  └─ tudo ──► web (gunicorn :8000) ──► db (postgres :5432)
                                │                          │
                                │                 volume postgres_data
@@ -21,14 +22,15 @@ Django continua disponível como caminho alternativo.
                                └─ /media/  ──► volume media_data
 ```
 
-O nginx não monta volume nenhum: ele encaminha **todas** as rotas para a
-aplicação. Quem lê e escreve arquivo é o container do Django.
+O nginx termina o TLS e encaminha **todas** as rotas para a aplicação; os volumes
+dele guardam só o certificado e os logs. Quem lê e escreve arquivo enviado é o
+container do Django.
 
 | Serviço | Imagem | Papel |
 |---|---|---|
 | `db` | `postgres:16-alpine` | banco de dados |
 | `web` | build do `Dockerfile` (python:3.12-slim) | Django servido por Gunicorn |
-| `nginx` | build de `nginx/Dockerfile` | proxy reverso (única porta publicada) |
+| `nginx` | build de `nginx/Dockerfile` | proxy reverso + terminação TLS |
 
 ### Volumes
 
@@ -36,6 +38,8 @@ aplicação. Quem lê e escreve arquivo é o container do Django.
 |---|---|---|
 | `postgres_data` | `/var/lib/postgresql/data` | dados do PostgreSQL |
 | `media_data` | `/vol/media` (só no `web`) | **arquivos enviados pelo upload** |
+| `nginx_certs` | `/etc/nginx/certs` (só no `nginx`) | certificado TLS gerado na primeira subida |
+| `nginx_logs` | `/var/log/nginx` (só no `nginx`) | logs de acesso e de erro do proxy |
 
 Os arquivos enviados vão para `MEDIA_ROOT=/vol/media` (subpasta `uploads/`), que
 é um volume nomeado — sobrevive a `docker compose down` e à recriação dos
@@ -62,8 +66,9 @@ roda `migrate`, `collectstatic` e cria o superusuário a partir do `.env`.
 
 | URL | O quê |
 |---|---|
-| http://localhost:8080/ | formulário de upload + lista de arquivos enviados (**exige login**) |
-| http://localhost:8080/accounts/login/ | entrada, com as views prontas do `django.contrib.auth` |
+| https://localhost:8443/ | formulário de upload + lista de arquivos enviados (**exige login**) |
+| https://localhost:8443/accounts/login/ | entrada, com as views prontas do `django.contrib.auth` |
+| http://localhost:8080/ | só devolve `301` para o HTTPS |
 | http://localhost:8080/admin/ | admin do Django (caminho alternativo) |
 | http://localhost:8080/healthz/ | healthcheck (testa o banco) |
 
@@ -158,6 +163,32 @@ Os arquivos continuam lá. Para apagar tudo, inclusive os volumes:
 docker compose down -v
 ```
 
+### TLS
+
+A stack sobe em HTTPS. O certificado é **autoassinado**, gerado na primeira
+subida pelo `nginx/entrypoint.sh` e guardado no volume `nginx_certs` — então o
+navegador vai avisar que não confia nele, e é esperado: quem atesta certificado é
+uma autoridade certificadora, e aqui não há nenhuma. Aceite a exceção para
+seguir, ou use `curl -k`.
+
+A porta 8080 continua publicada, mas só devolve `301` para o HTTPS.
+
+```bash
+curl -sk https://localhost:8443/accounts/login/ -o /dev/null -w "%{http_code}\n"
+```
+
+### Logs do proxy
+
+O nginx escreve em **dois destinos**: os arquivos no volume `nginx_logs`, que
+sobrevivem ao container, e a saída padrão, de onde o `docker compose logs` lê.
+O formato tem o tempo total da requisição e o tempo do upstream:
+
+```bash
+docker compose exec nginx tail -f /var/log/nginx/access.log
+docker compose exec nginx tail -f /var/log/nginx/error.log
+docker compose logs -f nginx
+```
+
 ## Material de apresentação
 
 | Arquivo | O quê |
@@ -203,7 +234,7 @@ docker volume inspect django-docker-upload_media_data
 - O container do Django roda como usuário sem privilégio (`appuser`, uid 1000);
   `/vol` é criado e dono dele na imagem, então os volumes nomeados herdam a
   permissão correta na primeira montagem.
-- O nginx é **apenas** proxy reverso: não monta volume e não serve arquivo.
+- O nginx é proxy reverso e terminação TLS: não serve arquivo de usuário.
   Estáticos e mídia saem pela aplicação, pelas rotas em `app/config/urls.py`.
   O custo dessa escolha é que cada download ocupa um worker do Gunicorn.
 - `client_max_body_size 100M` no nginx é o limite externo. O limite por arquivo
