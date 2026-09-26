@@ -17,7 +17,9 @@ COPY app/ /app/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# usuario sem privilegio; /vol e dono dele para os volumes herdarem a permissao
+# usuario sem privilegio; /vol/media e dono dele para o volume herdar a permissao.
+# /vol/static fica na camada do container mesmo: e saida do collectstatic, que roda
+# a cada boot, entao nao ha o que persistir.
 RUN useradd --uid 1000 --create-home appuser \
     && mkdir -p /vol/static /vol/media \
     && chown -R appuser:appuser /vol /app
