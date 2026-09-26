@@ -19,8 +19,9 @@ services:
     restart: unless-stopped
     env_file: .env
     volumes:
+      # so o que precisa sobreviver ao container: os uploads.
+      # /vol/static nao e volume — o collectstatic regenera a cada boot.
       - media_data:/vol/media
-      - static_data:/vol/static
     depends_on:
       db:
         condition: service_healthy
@@ -32,13 +33,9 @@ services:
     restart: unless-stopped
     ports:
       - "${NGINX_PORT:-8080}:80"
-    volumes:
-      - media_data:/vol/media:ro
-      - static_data:/vol/static:ro
     depends_on:
       - web
 
 volumes:
-  postgres_data:
-  media_data:
-  static_data:
+  postgres_data:   # dados do PostgreSQL
+  media_data:      # arquivos enviados pelo upload

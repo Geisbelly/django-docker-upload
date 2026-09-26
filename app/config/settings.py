@@ -33,6 +33,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "core.middleware.ContentSecurityPolicyMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -62,6 +63,13 @@ DATABASES = {
         "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "apppass"),
         "HOST": os.environ.get("POSTGRES_HOST", "db"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+        "OPTIONS": {
+            # nao fica pendurado esperando um banco que nao responde
+            "connect_timeout": 5,
+            # teto para consulta: uma query que passe disso e derrubada pelo
+            # proprio Postgres, entao nao da para prender um worker indefinidamente
+            "options": f"-c statement_timeout={os.environ.get('DB_STATEMENT_TIMEOUT_MS', '15000')}",
+        },
     }
 }
 
@@ -102,3 +110,35 @@ UPLOAD_ALLOWED_EXTENSIONS = env_list(
     "UPLOAD_ALLOWED_EXTENSIONS",
     "pdf,doc,docx,odt,txt,csv,xls,xlsx,ods,png,jpg,jpeg,gif,webp",
 )
+
+# ---------------------------------------------------------------------------
+# Cabecalhos e cookies
+# ---------------------------------------------------------------------------
+# O que nao depende de TLS fica ligado sempre; o que depende so faz sentido
+# quando houver HTTPS, e ai vem por variavel de ambiente.
+
+SECURE_CONTENT_TYPE_NOSNIFF = True      # o navegador respeita o tipo que eu declaro
+SECURE_REFERRER_POLICY = "same-origin"  # nao vaza a URL para outro site
+X_FRAME_OPTIONS = "DENY"                # ninguem me embute em iframe
+
+SESSION_COOKIE_HTTPONLY = True          # script nao le o cookie de sessao
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+
+SESSION_COOKIE_SECURE = os.environ.get("DJANGO_SECURE_COOKIES", "0") == "1"
+CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
+SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SSL_REDIRECT", "0") == "1"
+SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_HSTS_SECONDS", "0"))
+
+# teto de campos num POST, para um formulario gigante nao consumir CPU
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
+
+# ---------------------------------------------------------------------------
+# Autenticacao
+# ---------------------------------------------------------------------------
+# Enviar arquivo exige login. Usamos as views prontas do django.contrib.auth
+# (LoginView/LogoutView), sem app de terceiros.
+
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "home"
+LOGOUT_REDIRECT_URL = "login"

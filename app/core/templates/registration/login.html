@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrar · Documentos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Yeseva+One&family=Jost:wght@300;400;500;600&display=swap">
+  <style>
+    :root {
+      --bg: #0B0D0F; --navy: #111A29; --navy-2: #0D1420;
+      --cream: #F2E6C9; --cream-2: #DCD0B4; --gold: #B89B61; --gold-2: #D9C08A;
+      --line: rgba(184,155,97,.34); --line-2: rgba(184,155,97,.14);
+      --mist: #9AA4B8; --stop: #D08A7A;
+      --display: "Yeseva One", Georgia, serif;
+      --caps: "Cinzel", Georgia, serif;
+      --body: "Jost", "Helvetica Neue", Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; display: grid; place-items: center; padding: 24px;
+      color: var(--cream-2); font: 400 16px/1.6 var(--body);
+      background:
+        radial-gradient(1.6px 1.6px at 18% 16%, rgba(242,230,201,.30), transparent 60%),
+        radial-gradient(1.4px 1.4px at 80% 10%, rgba(184,155,97,.34), transparent 60%),
+        radial-gradient(1.2px 1.2px at 30% 78%, rgba(242,230,201,.20), transparent 60%),
+        radial-gradient(1.6px 1.6px at 88% 66%, rgba(217,192,138,.26), transparent 60%),
+        var(--bg);
+    }
+    .caixa {
+      width: 100%; max-width: 420px; position: relative;
+      background: linear-gradient(180deg, var(--navy), var(--navy-2));
+      border: 1px solid var(--line-2); border-radius: 14px; padding: 36px 32px;
+      animation: sobe .6s ease both;
+    }
+    .caixa::before, .caixa::after {
+      content: ""; position: absolute; width: 20px; height: 20px;
+      border: 1px solid var(--gold); opacity: .5;
+    }
+    .caixa::before { top: 12px; left: 12px; border-right: 0; border-bottom: 0; }
+    .caixa::after { bottom: 12px; right: 12px; border-left: 0; border-top: 0; }
+    .olho {
+      font-family: var(--caps); font-size: 11.5px; font-weight: 600;
+      letter-spacing: .3em; text-transform: uppercase; color: var(--gold); margin: 0 0 10px;
+    }
+    .olho::before { content: "✦"; margin-right: 10px; opacity: .85; }
+    h1 { font-family: var(--display); font-weight: 400; font-size: 32px;
+      color: var(--cream); margin: 0 0 6px; }
+    .fio { height: 1px; margin: 14px 0 20px; transform-origin: left center;
+      background: linear-gradient(90deg, var(--gold), var(--line-2) 60%, transparent);
+      animation: fio .8s cubic-bezier(.2,.7,.3,1) both; }
+    @keyframes fio { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    @keyframes sobe { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    p.sub { margin: 0 0 24px; color: var(--mist); font-size: 14.5px; }
+    label {
+      display: block; font-family: var(--caps); font-size: 11px; font-weight: 600;
+      letter-spacing: .2em; text-transform: uppercase; color: var(--gold); margin-bottom: 7px;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%; padding: 12px 14px; font-size: 15px; font-family: inherit;
+      border: 1px solid var(--line-2); border-radius: 9px;
+      background: rgba(11,13,15,.6); color: var(--cream);
+      transition: border-color .25s ease, box-shadow .25s ease;
+    }
+    input:focus { outline: 0; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(184,155,97,.16); }
+    .campo { margin-bottom: 18px; }
+    button {
+      width: 100%; font-family: var(--caps); font-size: 13px; font-weight: 600;
+      letter-spacing: .18em; text-transform: uppercase; cursor: pointer;
+      background: linear-gradient(180deg, var(--gold-2), var(--gold));
+      color: #14100a; border: 0; border-radius: 9px; padding: 13px 20px; margin-top: 6px;
+      transition: transform .2s ease, box-shadow .25s ease;
+    }
+    button:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(184,155,97,.32); }
+    .erro {
+      background: rgba(208,138,122,.12); border: 1px solid rgba(208,138,122,.3);
+      color: var(--stop); border-radius: 8px; padding: 11px 14px;
+      margin-bottom: 18px; font-size: 14px;
+    }
+    .erro ul { margin: 0; padding-left: 18px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <form class="caixa" method="post">
+    {% csrf_token %}
+    <p class="olho">Documentos</p>
+    <h1>Entrar</h1>
+    <div class="fio"></div>
+    <p class="sub">Enviar arquivo exige sessão. Use as credenciais definidas no <code>.env</code>.</p>
+
+    {% if form.errors %}
+      <div class="erro">Usuário ou senha não conferem.</div>
+    {% endif %}
+
+    <div class="campo">
+      <label for="{{ form.username.id_for_label }}">Usuário</label>
+      {{ form.username }}
+    </div>
+    <div class="campo">
+      <label for="{{ form.password.id_for_label }}">Senha</label>
+      {{ form.password }}
+    </div>
+
+    <button type="submit">Entrar</button>
+    <input type="hidden" name="next" value="{{ next }}">
+  </form>
+</body>
+</html>
