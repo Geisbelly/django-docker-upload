@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------------------
+# Formato de log com o que interessa para diagnostico: alem do padrao combined,
+# o tempo total da requisicao e o tempo que o upstream levou para responder.
+# ---------------------------------------------------------------------------
+log_format detalhado '$remote_addr - $remote_user [$time_local] '
+                     '"$request" $status $body_bytes_sent '
+                     '"$http_referer" "$http_user_agent" '
+                     'req=${request_time}s upstream=${upstream_response_time}s';
+
+upstream django {
+    server web:8000;
+}
+
+# ---------------------------------------------------------------------------
+# HTTP: nao serve nada, so manda para o HTTPS.
+# A porta publicada no host entra por envsubst, senao o redirecionamento
+# apontaria para a 443 do host, que nao existe.
+# ---------------------------------------------------------------------------
+server {
+    listen 80;
+    server_name _;
+
+    access_log /var/log/nginx/access.log detalhado;
+    access_log /dev/stdout detalhado;
+    error_log  /var/log/nginx/error.log warn;
+
+    return 301 https://$host:${TLS_PORT_PUBLICA}$request_uri;
+}
+
+# ---------------------------------------------------------------------------
+# HTTPS: aqui e o proxy reverso de verdade.
+# ---------------------------------------------------------------------------
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name _;
+
+    ssl_certificate     /etc/nginx/certs/server.crt;
+    ssl_certificate_key /etc/nginx/certs/server.key;
+
+    # so protocolos ainda considerados seguros
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # dois destinos para cada log: o arquivo no volume, que sobrevive ao
+    # container, e a saida padrao, que e de onde o `docker compose logs` le.
+    access_log /var/log/nginx/access.log detalhado;
+    access_log /dev/stdout detalhado;
+    error_log  /var/log/nginx/error.log warn;
+
+    # limite de upload (Django tambem valida)
+    client_max_body_size 100M;
+
+    # Proxy reverso e so isso: TUDO vai para a aplicacao, inclusive /static/ e
+    # /media/. O nginx nao monta volume de midia — quem le e escreve arquivo e o
+    # container da aplicacao.
+    location / {
+        proxy_pass http://django;
+        # $http_host preserva a porta; $host a descarta, e ai o Django compara
+        # o header Origin (com porta) contra um host sem porta e reprova o CSRF
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # e por este que o Django sabe que a origem era HTTPS
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+        proxy_read_timeout 120s;
+    }
+}

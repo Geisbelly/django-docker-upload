@@ -262,12 +262,21 @@ code { font-family: var(--mono); font-size: .92em; }
 .row { display: flex; gap: 11px; align-items: center; }
 
 .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
-.list li { display: flex; gap: 12px; font-size: 18.5px; color: var(--ink-soft); line-height: 1.35; }
+/* nao pode ser flex: cada <code> viraria um item flex proprio e o gap
+   espalharia as palavras da frase. Marcador posicionado, texto em fluxo. */
+.list li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 18.5px;
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
 .list li::before {
   content: "";
-  flex: none;
+  position: absolute;
+  left: 0;
+  top: .55em;
   width: 7px; height: 7px;
-  margin-top: 10px;
   border-radius: 50%;
   background: var(--accent);
 }
@@ -761,7 +770,7 @@ code { font-family: var(--mono); font-size: .92em; }
 <section class="slide" data-eyebrow="Arquitetura" data-title="Três containers, uma porta publicada" data-time="2:00">
   <p class="eyebrow">Arquitetura</p>
   <h2 class="stitle">Três containers, uma porta publicada</h2>
-  <p class="deck">Rede isolada, uma porta de entrada, serviços que se acham por nome.</p>
+  <p class="deck">Rede isolada, entrada por HTTPS, serviços que se acham por nome.</p>
 
   <svg class="dg" viewBox="0 0 1160 258" role="img" aria-label="diagrama da arquitetura: navegador, nginx, web e db, com os volumes montados na aplicação">
     <rect class="ghost" x="238" y="4" width="918" height="250" rx="12"></rect>
@@ -772,13 +781,13 @@ code { font-family: var(--mono); font-size: .92em; }
     <text class="sub" x="77" y="88" text-anchor="middle">fora do Docker</text>
 
     <path class="edge-a" d="M160 73 H 262"></path>
-    <text class="lbl-a" x="211" y="62" text-anchor="middle">:8080</text>
-    <text class="lbl" x="211" y="96" text-anchor="middle">a única</text>
+    <text class="lbl-a" x="211" y="62" text-anchor="middle">:8443</text>
+    <text class="lbl" x="211" y="96" text-anchor="middle">https</text>
 
     <rect class="box-a" x="270" y="32" width="216" height="82" rx="8"></rect>
     <text class="name" x="378" y="62" text-anchor="middle">nginx</text>
-    <text class="sub" x="378" y="83" text-anchor="middle">proxy reverso · sem volume</text>
-    <text class="code-l" x="378" y="103" text-anchor="middle">ports 8080 → 80</text>
+    <text class="sub" x="378" y="83" text-anchor="middle">proxy reverso · TLS</text>
+    <text class="code-l" x="378" y="103" text-anchor="middle">8443 → 443 · 8080 → 80</text>
 
     <path class="edge" d="M494 73 H 596"></path>
     <text class="lbl" x="545" y="62" text-anchor="middle">web:8000</text>
@@ -819,15 +828,15 @@ code { font-family: var(--mono); font-size: .92em; }
     </div>
     <div style="grid-template-columns:200px 1fr">
       <span class="k">3 containers</span>
-      <span class="v">nginx <code>8080→80</code> · web com gunicorn e <code>appuser</code> · db com healthcheck e sem porta</span>
+      <span class="v">nginx <code>8443→443</code> e <code>8080→80</code> · web com gunicorn e <code>appuser</code> · db sem porta</span>
     </div>
     <div style="grid-template-columns:200px 1fr">
-      <span class="k">2 volumes</span>
-      <span class="v"><code>media_data</code> em /vol/media · <code>postgres_data</code> em /var/lib/postgresql — o nginx não tem nenhum</span>
+      <span class="k">4 volumes</span>
+      <span class="v"><code>media_data</code> · <code>postgres_data</code> · <code>nginx_certs</code> (o certificado) · <code>nginx_logs</code> (acesso e erro)</span>
     </div>
   </div>
 
-  <div class="notes-src" hidden>Slide central (2min). Percurso da requisição: navegador bate no nginx na 8080, nginx repassa para gunicorn em web:8000, Django fala com o Postgres em db:5432. Dois pontos que precisam ficar: (1) superfície de ataque — só uma porta publicada, o banco não é alcançável de fora; (2) os volumes são montados só no container da aplicação — o nginx não monta nenhum e não serve arquivo; é proxy reverso e nada mais. Se perguntarem quem entrega /media/ e /static/: é o Django, por rotas declaradas em config/urls.py, porque com DEBUG=0 ele não serve isso sozinho. O custo é que cada download ocupa um worker do Gunicorn; em troca, o proxy tem um papel só. Cada container tem um processo e um ciclo de vida: dá para trocar a versão do nginx sem reconstruir a imagem do Django.</div>
+  <div class="notes-src" hidden>Slide central (2min). Percurso da requisição: navegador bate no nginx na 8080, nginx repassa para gunicorn em web:8000, Django fala com o Postgres em db:5432. Dois pontos que precisam ficar: (1) superfície de ataque — só uma porta publicada, o banco não é alcançável de fora; (2) os volumes de dados são montados só no container da aplicação — o nginx tem os seus dois (certificado e log), mas não toca na mídia nem serve arquivo. Se perguntarem quem entrega /media/ e /static/: é o Django, por rotas declaradas em config/urls.py, porque com DEBUG=0 ele não serve isso sozinho. O custo é que cada download ocupa um worker do Gunicorn; em troca, o proxy tem um papel só. Cada container tem um processo e um ciclo de vida: dá para trocar a versão do nginx sem reconstruir a imagem do Django.</div>
 </section>
 
 <!-- ============================= 4 · nuvem ============================= -->
@@ -897,7 +906,154 @@ code { font-family: var(--mono); font-size: .92em; }
   <div class="notes-src" hidden>Slide da disciplina (1min30) — é aqui que eu amarro o trabalho ao conteúdo da matéria. A VM virtualiza hardware: o hypervisor entrega CPU, memória e disco virtuais, e cada VM roda um sistema operacional convidado inteiro. O container virtualiza o sistema operacional: os processos usam o kernel do host, isolados por namespaces e limitados por cgroups. Daí vem tudo: sobe em segundos em vez de minutos, ocupa megabytes em vez de gigabytes, e cabem dezenas onde caberiam poucas VMs. O preço é o isolamento mais fraco, porque todos dependem do mesmo kernel, e não dá para rodar um SO diferente do host. Honestidade que vale ponto: no meu Mac o Docker Desktop roda uma VM Linux por baixo, então ali existe um hypervisor; num servidor Linux, que é o destino real, não existe. O callout cobre o resto do conteúdo da matéria: imagem portátil e anti lock-in, compose como IaC, aplicação stateless, e do 12-Factor eu aplico config no ambiente, logs no stdout e descartabilidade. Se perguntarem o modelo de serviço: rodando os containers numa VM que eu administro é IaaS; num serviço gerenciado de containers seria CaaS ou PaaS, e o código não mudaria. Se perguntarem de elasticidade: escala horizontal com --scale web=3 funciona, mas antes o migrate tem que sair do boot e o volume virar object storage.</div>
 </section>
 
-<!-- ====================== 5 · simulador (animado) ====================== -->
+<!-- ============================ 5 · dockerfile ============================ -->
+<section class="slide" data-eyebrow="Imagem Docker" data-title="As decisões dentro do Dockerfile" data-time="1:30">
+  <p class="eyebrow">Imagem Docker</p>
+  <h2 class="stitle">As decisões dentro do Dockerfile</h2>
+
+  <div class="cols c2">
+    <div class="code"><span class="kw">FROM</span> python:3.12-slim          <span class="cm">1</span>
+<span class="kw">RUN</span> apt-get install -y \        <span class="cm">2</span>
+    postgresql-client
+<span class="kw">WORKDIR</span> /app                    <span class="cm">3</span>
+<span class="kw">COPY</span> requirements.txt .         <span class="cm">4</span>
+<span class="kw">RUN</span> pip install -r requirements.txt
+<span class="kw">COPY</span> app/ /app/
+<span class="kw">RUN</span> useradd --uid 1000 appuser \  <span class="cm">5</span>
+ && mkdir -p /vol/media \
+ && chown -R appuser:appuser /vol
+<span class="kw">USER</span> appuser
+<span class="kw">ENTRYPOINT</span> [<span class="ok">"/entrypoint.sh"</span>]    <span class="cm">6</span>
+<span class="kw">CMD</span> [<span class="ok">"gunicorn"</span>, <span class="ok">"config.wsgi"</span>, ...]</div>
+
+    <div class="kv">
+      <div style="grid-template-columns:24px 1fr">
+        <span class="k">1</span>
+        <span class="v"><b>slim, não alpine.</b> glibc aceita as <i>wheels</i> prontas do PyPI, inclusive a do <code>psycopg</code>. Alpine usa musl e força compilar tudo.</span>
+      </div>
+      <div style="grid-template-columns:24px 1fr">
+        <span class="k">2</span>
+        <span class="v"><b>Uma dependência só.</b> <code>postgresql-client</code>, pelo <code>pg_isready</code> do entrypoint. O driver não precisa de lib do sistema: o <code>psycopg[binary]</code> traz a própria.</span>
+      </div>
+      <div style="grid-template-columns:24px 1fr">
+        <span class="k">3</span>
+        <span class="v"><b>WORKDIR /app</b> é onde o código mora.</span>
+      </div>
+      <div style="grid-template-columns:24px 1fr">
+        <span class="k">4</span>
+        <span class="v"><b>A ordem é cache.</b> Dependências antes do código: mudar uma view não reinstala o Django.</span>
+      </div>
+      <div style="grid-template-columns:24px 1fr">
+        <span class="k">5</span>
+        <span class="v"><b>Sem privilégio.</b> E o <code>chown</code> vem antes do volume existir: volume vazio herda o dono do diretório da imagem.</span>
+      </div>
+      <div style="grid-template-columns:24px 1fr">
+        <span class="k">6</span>
+        <span class="v"><b>Gunicorn, não runserver.</b> 3 workers, log no stdout.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <span class="badge">i</span>
+    <span>O <code>entrypoint.sh</code> espera o banco, migra, coleta estáticos e faz <code>exec gunicorn</code> — o <code>exec</code> faz o Gunicorn virar <b>PID 1</b> e receber o <code>SIGTERM</code>; sem ele o container morreria por timeout no <code>stop</code>.</span>
+  </div>
+
+  <div class="notes-src" hidden>Slide da imagem (1min30). Não leio o Dockerfile: explico as seis decisões. A base slim por causa da glibc e das wheels — alpine usaria musl e obrigaria a compilar psycopg. A única dependência de sistema, que é o postgresql-client, pelo pg_isready. Se perguntarem do libpq: o psycopg[binary] empacota a própria libpq dentro da wheel — dá para provar com psycopg.pq.__impl__, que devolve 'binary'. A libpq do sistema entra junto como dependência do postgresql-client e não é usada pelo driver. E o rm -rf das listas do apt fica na MESMA instrução porque, em instrução separada, a camada anterior já teria sido gravada com os arquivos dentro. O WORKDIR. A ordem das camadas, que é cache de build e não estética. O usuário sem privilégio, e o chown antes de existir volume — quando um volume vazio é montado sobre um diretório que existe na imagem, o Docker copia conteúdo E dono; sem isso o volume nasceria do root e o upload não gravaria. E o ENTRYPOINT com CMD: o script sempre roda e recebe o comando como argumento. Se perguntarem do EXPOSE 8000: é documentação da imagem, não publica nada — quem publica é o ports do Compose. Se perguntarem das variáveis de build: PYTHONDONTWRITEBYTECODE para não gerar .pyc na camada de escrita, PYTHONUNBUFFERED para o log aparecer na hora no docker logs, PIP_NO_CACHE_DIR para não engordar a imagem.</div>
+</section>
+
+<!-- ============================= 6 · compose ============================= -->
+<section class="slide" data-eyebrow="Orquestração" data-title="Um arquivo descreve o ambiente inteiro" data-time="1:30">
+  <p class="eyebrow">Orquestração</p>
+  <h2 class="stitle">Um arquivo descreve o ambiente inteiro</h2>
+  <p class="deck">O <code>docker-compose.yml</code> declara o <b>estado desejado</b> — serviços, rede e volumes — em vez da sequência de comandos. É infraestrutura como código, versionada no Git.</p>
+
+  <div class="cols c3">
+    <div class="card">
+      <div class="row"><span class="badge">1</span><h3>db</h3></div>
+      <div class="kv" style="font-size:15px">
+        <div style="grid-template-columns:86px 1fr"><span class="k">imagem</span><span class="v">postgres:16-alpine</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">portas</span><span class="v">nenhuma</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">variáveis</span><span class="v">POSTGRES_* do .env</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">volume</span><span class="v">postgres_data</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">depende</span><span class="v">de ninguém</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">boot</span><span class="v">healthcheck a cada 5s</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row"><span class="badge">2</span><h3>web</h3></div>
+      <div class="kv" style="font-size:15px">
+        <div style="grid-template-columns:86px 1fr"><span class="k">imagem</span><span class="v">build do Dockerfile</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">portas</span><span class="v">expose 8000</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">variáveis</span><span class="v">o .env inteiro</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">volume</span><span class="v">media_data</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">depende</span><span class="v">do db <b>saudável</b></span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">boot</span><span class="v">entrypoint.sh</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row"><span class="badge">3</span><h3>nginx</h3></div>
+      <div class="kv" style="font-size:15px">
+        <div style="grid-template-columns:86px 1fr"><span class="k">imagem</span><span class="v">build de nginx/</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">portas</span><span class="v"><b>8080 → 80</b></span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">variáveis</span><span class="v">só NGINX_PORT</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">volume</span><span class="v">nenhum</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">depende</span><span class="v">do web</span></div>
+        <div style="grid-template-columns:86px 1fr"><span class="k">boot</span><span class="v">sobe por último</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <span class="badge">i</span>
+    <span>Os três usam <code>restart: unless-stopped</code>. Nenhuma rede é declarada: o Compose cria a rede do projeto e liga os três nela — e é o <b>DNS interno</b> dela que faz <code>web</code> e <code>db</code> funcionarem como endereço.</span>
+  </div>
+
+  <div class="notes-src" hidden>Slide da orquestração (1min30). Percorro a tabela por coluna, não por linha. O que quero que fique: o healthcheck do db, porque “container em execução” não é “banco aceitando conexão” — sem ele o web tentaria migrar num Postgres ainda inicializando; o expose contra o ports, que é a diferença entre existir na rede interna e ser alcançável do host; e o fato de o nginx não ter volume nenhum. Se perguntarem por que o nginx tem imagem construída em vez de bind mount da config: bind mount amarra o container a um caminho da máquina, o que quebra a portabilidade que a containerização existe para dar. Se perguntarem do restart unless-stopped: o Docker sobe de novo se cair e só desiste se alguém parar de propósito; é seguro no web porque migrate e collectstatic são idempotentes.</div>
+</section>
+
+<!-- ============================== 7 · nginx ============================== -->
+<section class="slide" data-eyebrow="Proxy reverso" data-title="O que o nginx faz — e o que ele não faz" data-time="1:30">
+  <p class="eyebrow">Proxy reverso</p>
+  <h2 class="stitle">O que o nginx faz — e o que ele não faz</h2>
+
+  <div class="cols c2">
+    <div class="code"><span class="kw">upstream</span> django { server web:8000; }
+<span class="kw">server</span> {                       <span class="cm"># HTTP: só empurra</span>
+    listen 80;
+    return 301 https://$host:${TLS_PORT_PUBLICA}$request_uri;
+}
+<span class="kw">server</span> {                       <span class="cm"># HTTPS: o proxy</span>
+    listen 443 ssl;
+    ssl_certificate /etc/nginx/certs/server.crt;
+    access_log /var/log/nginx/access.log detalhado;
+    access_log /dev/stdout detalhado;
+    <span class="kw">location</span> / {
+        proxy_pass http://django;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}</div>
+
+    <ul class="list">
+      <li><code>upstream</code> nomeia o destino. Deixa o caminho pronto para balancear entre réplicas do <code>web</code>.</li>
+      <li>A porta <b>80 não serve nada</b>: devolve <code>301</code>. A porta do host entra por variável.</li>
+      <li><code>client_max_body_size</code> devolve <b>413</b> sem chamar a aplicação.</li>
+      <li><b>O TLS termina aqui</b>, em TLS 1.2/1.3. Certificado autoassinado, gerado no primeiro boot e guardado em volume.</li>
+      <li>Os <code>X-Forwarded-*</code> dizem ao Django que a origem era HTTPS.</li>
+      <li>O log vai para o <b>volume e para o stdout</b>, com o tempo da requisição e o do upstream.</li>
+    </ul>
+  </div>
+
+  <div class="callout warn">
+    <span class="badge warn">!</span>
+    <span><b><code>Host $http_host</code>, e não <code>$host</code>:</b> o <code>$host</code> descarta a porta, os dois não batiam e o CSRF reprovava <b>todo POST com 403</b>.</span>
+  </div>
+
+  <div class="notes-src" hidden>Slide do proxy (1min30). Começo pelo que ele NÃO faz: não lê a mídia, não serve arquivo, não decide nada. Ele tem volume, sim — dois, mas só para o certificado e para os logs dele. Uma location só, tudo encaminhado. Depois percorro os trechos. O upstream, que é o gancho para balanceamento com --scale. O listen 80 sendo dentro do container. O client_max_body_size como perímetro — 413 antes de acordar o Python. Os cabeçalhos encaminhados, sem os quais a aplicação veria toda requisição vindo do IP do container do nginx. E os dois timeouts de 120s iguais: se o do nginx fosse menor, o cliente levaria 504 com o worker ainda processando o upload. O callout do $http_host é história real e vale contar: foi 403 em todo POST até eu descobrir. Se perguntarem por que o nginx não serve os estáticos, que seria o normal: foi decisão de manter o proxy com um papel só; o custo é que cada download ocupa um worker do Gunicorn, e está listado como limitação.</div>
+</section>
+
+<!-- ====================== 8 · simulador (animado) ====================== -->
 <section class="slide sim" id="slideSim" data-eyebrow="Simulador" data-title="Estado fora dos containers, em movimento" data-time="2:00">
   <p class="eyebrow">Simulador</p>
   <h2 class="stitle">Estado fora dos containers, em movimento</h2>
@@ -921,8 +1077,8 @@ code { font-family: var(--mono); font-size: .92em; }
       <text class="name-s" x="279" y="92" text-anchor="middle">nginx</text>
       <text class="sub" x="279" y="112" text-anchor="middle">proxy reverso</text>
       <text class="sub" x="279" y="130" text-anchor="middle">não toca em arquivo</text>
-      <text class="sub" x="279" y="172" text-anchor="middle">nenhum volume: não há</text>
-      <text class="sub" x="279" y="186" text-anchor="middle">nada nele para persistir</text>
+      <text class="sub" x="279" y="172" text-anchor="middle">volumes de certificado</text>
+      <text class="sub" x="279" y="186" text-anchor="middle">e de log</text>
     </g>
     <path class="conn el" id="s-c-proxy" d="M386 105 H 438"></path>
 
@@ -989,7 +1145,7 @@ code { font-family: var(--mono); font-size: .92em; }
     <span class="sim-say" id="simSay">—</span>
   </div>
 
-  <div class="notes-src" hidden>Slide central (2min) — deixar tocar uma vez e ir narrando por cima; os botões controlam, e a tecla P repete. O que precisa ficar: o <b>MEDIA_ROOT do Django é o ponto de montagem do volume</b>, então o arquivo nunca esteve na camada de escrita do container. Por isso o down leva os containers e não leva os arquivos. Se perguntarem por que volume nomeado em vez de bind mount: portabilidade (não depende de caminho do host) e permissão (o volume herda o dono do diretório na imagem). E como o nginx não monta volume, é a própria aplicação que lê o arquivo de volta para servir o download. Se perguntarem do banco: o container do Postgres é tão descartável quanto o do web — o que persiste é o volume postgres_data montado em /var/lib/postgresql/data. O nginx é o único sem volume, porque não há nada nele que precise sobreviver. Este slide é o plano B se a demo ao vivo falhar.</div>
+  <div class="notes-src" hidden>Slide central (2min) — deixar tocar uma vez e ir narrando por cima; os botões controlam, e a tecla P repete. O que precisa ficar: o <b>MEDIA_ROOT do Django é o ponto de montagem do volume</b>, então o arquivo nunca esteve na camada de escrita do container. Por isso o down leva os containers e não leva os arquivos. Se perguntarem por que volume nomeado em vez de bind mount: portabilidade (não depende de caminho do host) e permissão (o volume herda o dono do diretório na imagem). E como o nginx não monta volume, é a própria aplicação que lê o arquivo de volta para servir o download. Se perguntarem do banco: o container do Postgres é tão descartável quanto o do web — o que persiste é o volume postgres_data montado em /var/lib/postgresql/data. O nginx tem dois volumes próprios: o do certificado, para não mudar a cada boot, e o dos logs. Este slide é o plano B se a demo ao vivo falhar.</div>
 </section>
 
 <!-- ============================= 6 · upload ============================= -->
@@ -1273,117 +1429,114 @@ code { font-family: var(--mono); font-size: .92em; }
   <div class="notes-src" hidden>Slide de segurança (1min30). A ideia é defesa em profundidade: a primeira camada é a sessão — home e /media/ estão sob login_required, então quem não entrou não envia nem baixa nada. Depois disso, cada camada é barata e recusa antes de a próxima gastar trabalho — o conteúdo só é lido se nome, extensão e tamanho passaram. O exemplo do executável renomeado é o que fixa a ideia: extensão é só o sobrenome do arquivo, e a assinatura é a identidade. Sobre a saída: servir conteúdo de usuário no mesmo domínio é o ponto mais delicado do projeto, então tudo baixa em vez de abrir, menos imagem rasterizada; o tipo vem de uma tabela fixa, nunca de adivinhação; e o nosniff impede o navegador de ignorar esse tipo. A CSP fecha o resto. Se perguntarem de prompt injection: não se aplica, porque não existe LLM nenhum no fluxo — nada aqui lê o conteúdo do arquivo para alimentar um modelo. Se um dia houver, a defesa seria tratar o conteúdo extraído como dado não confiável, nunca como instrução. Se perguntarem de SQL injection: o ORM do Django parametriza; o único SQL escrito à mão é o SELECT 1 do healthz, que é constante e não recebe entrada.</div>
 </section>
 
-<!-- ============================== 10 · demo ============================== -->
-<section class="slide" data-eyebrow="Demonstração" data-title="Roteiro da demo ao vivo" data-time="3:00">
+<!-- ============================== 13 · demo ============================== -->
+<section class="slide" data-eyebrow="Demonstração" data-title="Roteiro da demo ao vivo" data-time="3:30">
   <p class="eyebrow">Demonstração</p>
   <h2 class="stitle">Roteiro da demo ao vivo</h2>
 
-  <svg class="dg" viewBox="0 0 1160 180" role="img" aria-label="os seis passos da demo em sequência, com o sexto marcado como o que prova o requisito">
-    <line x1="90" y1="44" x2="1070" y2="44" stroke="var(--line)" stroke-width="3"></line>
-    <line x1="874" y1="44" x2="1070" y2="44" stroke="var(--ok)" stroke-width="3"></line>
+  <svg class="dg" viewBox="0 0 1160 158" role="img" aria-label="os sete passos da demo em sequência, com o sétimo marcado como o que prova o requisito">
+    <line x1="80" y1="38" x2="1078" y2="38" stroke="var(--line)" stroke-width="3"></line>
+    <line x1="912" y1="38" x2="1078" y2="38" stroke="var(--ok)" stroke-width="3"></line>
 
-    <circle cx="90" cy="44" r="21" fill="var(--surface)"></circle><circle cx="90" cy="44" r="21" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
-    <text class="code-l" x="90" y="50" text-anchor="middle">1</text>
-    <text class="name-s" x="90" y="92" text-anchor="middle">Subir e entrar</text>
-    <text class="sub" x="90" y="116" text-anchor="middle">a stack no ar,</text>
-    <text class="sub" x="90" y="136" text-anchor="middle">e o login feito</text>
+    <circle cx="80" cy="38" r="19" fill="var(--surface)"></circle>
+    <circle cx="80" cy="38" r="19" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
+    <text class="code-l" x="80" y="44" text-anchor="middle">1</text>
+    <text class="name-s" x="80" y="84" text-anchor="middle">Subir e entrar</text>
+    <text class="sub" x="80" y="106" text-anchor="middle">login em https</text>
 
-    <circle cx="286" cy="44" r="21" fill="var(--surface)"></circle><circle cx="286" cy="44" r="21" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
-    <text class="code-l" x="286" y="50" text-anchor="middle">2</text>
-    <text class="name-s" x="286" y="92" text-anchor="middle">Conferir os três</text>
-    <text class="sub" x="286" y="116" text-anchor="middle">db marcado</text>
-    <text class="sub" x="286" y="136" text-anchor="middle">como healthy</text>
+    <circle cx="246" cy="38" r="19" fill="var(--surface)"></circle>
+    <circle cx="246" cy="38" r="19" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
+    <text class="code-l" x="246" y="44" text-anchor="middle">2</text>
+    <text class="name-s" x="246" y="84" text-anchor="middle">Conferir os três</text>
+    <text class="sub" x="246" y="106" text-anchor="middle">db healthy</text>
 
-    <circle cx="482" cy="44" r="21" fill="var(--surface)"></circle><circle cx="482" cy="44" r="21" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
-    <text class="code-l" x="482" y="50" text-anchor="middle">3</text>
-    <text class="name-s" x="482" y="92" text-anchor="middle">Checar o banco</text>
-    <text class="sub" x="482" y="116" text-anchor="middle">a view roda</text>
-    <text class="sub" x="482" y="136" text-anchor="middle">SELECT 1</text>
+    <circle cx="412" cy="38" r="19" fill="var(--surface)"></circle>
+    <circle cx="412" cy="38" r="19" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
+    <text class="code-l" x="412" y="44" text-anchor="middle">3</text>
+    <text class="name-s" x="412" y="84" text-anchor="middle">O TLS</text>
+    <text class="sub" x="412" y="106" text-anchor="middle">o 301 e o certificado</text>
 
-    <circle cx="678" cy="44" r="21" fill="var(--surface)"></circle><circle cx="678" cy="44" r="21" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="2"></circle>
-    <text class="code-l" x="678" y="50" text-anchor="middle">4</text>
-    <text class="name-s" x="678" y="92" text-anchor="middle">Enviar arquivo</text>
-    <text class="sub" x="678" y="116" text-anchor="middle">um .exe barrado,</text>
-    <text class="sub" x="678" y="136" text-anchor="middle">depois um PDF</text>
+    <circle cx="579" cy="38" r="19" fill="var(--surface)"></circle>
+    <circle cx="579" cy="38" r="19" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="2"></circle>
+    <text class="code-l" x="579" y="44" text-anchor="middle">4</text>
+    <text class="name-s" x="579" y="84" text-anchor="middle">Enviar arquivo</text>
+    <text class="sub" x="579" y="106" text-anchor="middle">.exe barrado, PDF aceito</text>
 
-    <circle cx="874" cy="44" r="21" fill="var(--surface)"></circle><circle cx="874" cy="44" r="21" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
-    <text class="code-l" x="874" y="50" text-anchor="middle">5</text>
-    <text class="name-s" x="874" y="92" text-anchor="middle">Ver no volume</text>
-    <text class="sub" x="874" y="116" text-anchor="middle">gravado pelo</text>
-    <text class="sub" x="874" y="136" text-anchor="middle">appuser</text>
+    <circle cx="745" cy="38" r="19" fill="var(--surface)"></circle>
+    <circle cx="745" cy="38" r="19" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
+    <text class="code-l" x="745" y="44" text-anchor="middle">5</text>
+    <text class="name-s" x="745" y="84" text-anchor="middle">No volume</text>
+    <text class="sub" x="745" y="106" text-anchor="middle">dono é o appuser</text>
 
-    <circle cx="1070" cy="44" r="27" fill="var(--surface)"></circle><circle cx="1070" cy="44" r="27" fill="var(--ok-bg)" stroke="var(--ok)" stroke-width="3"></circle>
-    <text class="code-l" x="1070" y="51" text-anchor="middle" style="fill:var(--ok);font-weight:700">6</text>
-    <text class="name-s" x="1070" y="92" text-anchor="middle" style="fill:var(--ok)">Destruir e voltar</text>
-    <text class="sub" x="1070" y="116" text-anchor="middle" style="fill:var(--ok)">containers novos,</text>
-    <text class="sub" x="1070" y="136" text-anchor="middle" style="fill:var(--ok)">arquivo intacto</text>
+    <circle cx="912" cy="38" r="19" fill="var(--surface)"></circle>
+    <circle cx="912" cy="38" r="19" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
+    <text class="code-l" x="912" y="44" text-anchor="middle">6</text>
+    <text class="name-s" x="912" y="84" text-anchor="middle">Os logs</text>
+    <text class="sub" x="912" y="106" text-anchor="middle">req= e upstream=</text>
 
-    <text class="lbl-k" x="1158" y="170" text-anchor="end">é aqui que o requisito fica provado</text>
+    <circle cx="1078" cy="38" r="23" fill="var(--surface)"></circle>
+    <circle cx="1078" cy="38" r="23" fill="var(--ok-bg)" stroke="var(--ok)" stroke-width="3"></circle>
+    <text class="code-l" x="1078" y="45" text-anchor="middle" style="fill:var(--ok);font-weight:700">7</text>
+    <text class="name-s" x="1078" y="84" text-anchor="middle" style="fill:var(--ok)">Destruir e voltar</text>
+    <text class="sub" x="1078" y="106" text-anchor="middle" style="fill:var(--ok)">tudo intacto</text>
+
+    <text class="lbl-k" x="1158" y="140" text-anchor="end">é aqui que o requisito fica provado</text>
   </svg>
 
-  <div class="code"><span class="pr">$</span> docker compose up --build -d          <span class="cm"># 1 — e entrar em /accounts/login/</span>
-<span class="pr">$</span> docker compose ps                     <span class="cm"># 2 — db healthy</span>
-<span class="pr">$</span> curl localhost:8080/healthz/          <span class="cm"># 3 — {"status": "ok"}</span>
-<span class="cm">                                        # 4 — no navegador, em localhost:8080</span>
-<span class="pr">$</span> docker compose exec web ls -l /vol/media/uploads   <span class="cm"># 5</span>
-<span class="pr">$</span> docker compose down <span class="ok">&amp;&amp;</span> docker compose up -d           <span class="cm"># 6</span></div>
+  <div class="code"><span class="pr">$</span> docker compose up --build -d              <span class="cm"># 1 — e entrar em https://localhost:8443</span>
+<span class="pr">$</span> docker compose ps                         <span class="cm"># 2 — os três, db healthy</span>
+<span class="pr">$</span> curl -I http://localhost:8080/            <span class="cm"># 3 — 301 para o HTTPS</span>
+<span class="cm">                                            # 4 — no navegador: .exe barrado, depois um PDF</span>
+<span class="pr">$</span> docker compose exec web ls -l /vol/media/uploads             <span class="cm"># 5</span>
+<span class="pr">$</span> docker compose exec nginx tail -3 /var/log/nginx/access.log  <span class="cm"># 6</span>
+<span class="pr">$</span> docker compose down <span class="ok">&amp;&amp;</span> docker compose up -d    <span class="cm"># 7</span></div>
 
   <div class="callout warn">
     <span class="badge warn">!</span>
-    <span><b>Plano B:</b> se o Docker não colaborar, voltar ao slide 5 — tem o mesmo teste em texto. Não debugar ao vivo.</span>
+    <span><b>Plano B:</b> se o Docker não colaborar, voltar ao slide 8 — tem o mesmo teste em texto. Não debugar ao vivo.</span>
   </div>
 
-  <div class="notes-src" hidden>Slide de demo (3 a 4min de execução). Regras: (1) subir a stack ANTES da apresentação começar, para não gastar o tempo da banca esperando build; (2) já estar logada antes de começar — ou mostrar o login de propósito, que é rápido e prova o controle de acesso; (3) ter um arquivo pequeno de teste já escolhido na área de trabalho, e um .exe para mostrar a validação; (3) o passo 6 é o clímax — é onde o requisito principal fica provado, e por isso está destacado no desenho. Se o Docker falhar, pular para o slide 5, que tem o mesmo teste em texto. Frase pronta: “o ambiente não está colaborando agora; o comportamento é este aqui, e o repositório sobe com um comando só.”</div>
+  <div class="notes-src" hidden>Slide de demo (3 a 4min de execução). Regras: (1) subir a stack ANTES da apresentação começar; (2) já estar logada, ou mostrar o login de propósito, que prova o controle de acesso em dois segundos; (3) ter um arquivo pequeno de teste e um .exe já separados. No passo 1 o navegador vai avisar do certificado autoassinado — explicar em uma frase antes de aceitar: ele entrega a criptografia do tráfego, não a prova de identidade, e quem atesta identidade é uma autoridade certificadora. No passo 3, o curl -I na 8080 mostra o 301, e vale abrir o cadeado do navegador para ver o certificado. No passo 6, apontar o req= e o upstream= na linha de log: a diferença entre os dois separa lentidão da aplicação de lentidão do caminho, e quando aparece upstream=- é porque o nginx respondeu sozinho, como no 301. O passo 7 é o clímax: containers novos, arquivo intacto, e o log do nginx dizendo “certificado já existe no volume, reaproveitando” — dois volumes provando persistência de uma vez só. Se o Docker falhar, pular para o slide 8, que tem o mesmo teste em texto.</div>
 </section>
 
-<!-- ========================== 11 · fechamento ========================== -->
-<section class="slide" data-eyebrow="Fechamento" data-title="O que ficou de fora, e por quê" data-time="1:15">
-  <p class="eyebrow">Honestidade técnica</p>
-  <h2 class="stitle">O que ficou de fora, e por quê</h2>
+<!-- ========================== 14 · fechamento ========================== -->
+<section class="slide" data-eyebrow="Fechamento" data-title="Vantagens, limitações e próximos passos" data-time="1:30">
+  <p class="eyebrow">Análise técnica</p>
+  <h2 class="stitle">Vantagens, limitações e próximos passos</h2>
 
-  <svg class="dg" viewBox="0 0 1160 308" role="img" aria-label="cada limite do que foi entregue, com o caminho já mapeado para resolvê-lo">
-    <text class="zone-l" x="0" y="16" style="fill:var(--warn)">LIMITE DO QUE ENTREGUEI</text>
-    <text class="zone-l" x="620" y="16" style="fill:var(--ok)">O CAMINHO PARA RESOLVER</text>
+  <div class="cols c3">
+    <div class="card" style="border-left:3px solid var(--ok)">
+      <h3 style="color:var(--ok)">3 vantagens</h3>
+      <ul class="list">
+        <li><b>O estado sobrevive à infraestrutura.</b> Destruir e recriar os três containers não perde arquivo nem registro.</li>
+        <li><b>Uma porta de superfície.</b> Só o nginx publica; o banco não é alcançável de fora, e o processo não é root.</li>
+        <li><b>Portátil e com paridade.</b> A mesma imagem roda em qualquer provedor; o ambiente se recria com um comando.</li>
+      </ul>
+    </div>
 
-    <rect class="box-w" x="0" y="28" width="520" height="56" rx="8"></rect>
-    <text class="sub" x="20" y="54">Confiro assinatura dos primeiros bytes,</text>
-    <text class="sub" x="20" y="74">mas não valido o arquivo inteiro</text>
-    <path class="edge" d="M530 56 H 600"></path>
-    <rect class="box-k" x="620" y="28" width="540" height="56" rx="8"></rect>
-    <text class="sub" x="640" y="54">Uma biblioteca dedicada (python-magic)</text>
-    <text class="sub" x="640" y="74">cobre mais formatos que a minha tabela</text>
+    <div class="card" style="border-left:3px solid var(--warn)">
+      <h3 style="color:var(--warn)">3 limitações</h3>
+      <ul class="list neutral">
+        <li><b>Valido o começo do arquivo</b>, não o arquivo inteiro: um PDF com cabeçalho correto e conteúdo ruim passaria.</li>
+        <li><b>Autenticação sem autorização:</b> qualquer pessoa logada vê e baixa tudo.</li>
+        <li><b>Um host só.</b> Volume local não serve réplicas em nós diferentes, o <code>migrate</code> roda no boot, e o certificado é próprio, não de uma autoridade.</li>
+      </ul>
+    </div>
 
-    <rect class="box-w" x="0" y="96" width="520" height="56" rx="8"></rect>
-    <text class="sub" x="20" y="122">A CSP fica de fora do /admin/,</text>
-    <text class="sub" x="20" y="142">que usa script e estilo embutidos</text>
-    <path class="edge" d="M530 124 H 600"></path>
-    <rect class="box-k" x="620" y="96" width="540" height="56" rx="8"></rect>
-    <text class="sub" x="640" y="122">Adaptar os templates do admin, ou</text>
-    <text class="sub" x="640" y="142">uma política própria só para ele</text>
-
-    <rect class="box-w" x="0" y="164" width="520" height="56" rx="8"></rect>
-    <text class="sub" x="20" y="190">Tráfego em HTTP puro,</text>
-    <text class="sub" x="20" y="210">sem TLS configurado</text>
-    <path class="edge" d="M530 192 H 600"></path>
-    <rect class="box-k" x="620" y="164" width="540" height="56" rx="8"></rect>
-    <text class="sub" x="640" y="190">TLS no nginx, com redirecionamento</text>
-    <text class="sub" x="640" y="210">de HTTP para HTTPS</text>
-
-    <rect class="box-w" x="0" y="232" width="520" height="56" rx="8"></rect>
-    <text class="sub" x="20" y="258">Volume local: preso a um host,</text>
-    <text class="sub" x="20" y="278">não serve a vários nós</text>
-    <path class="edge" d="M530 260 H 600"></path>
-    <rect class="box-k" x="620" y="232" width="540" height="56" rx="8"></rect>
-    <text class="sub" x="640" y="258">Object storage (S3 ou MinIO), e o</text>
-    <text class="sub" x="640" y="278">migrate como job separado do boot</text>
-
-    <text class="sub" x="580" y="304" text-anchor="middle">Nenhum deles muda a infraestrutura que o trabalho pediu — são camadas acima dela.</text>
-  </svg>
+    <div class="card" style="border-left:3px solid var(--accent)">
+      <h3 style="color:var(--accent-ink)">3 melhorias</h3>
+      <ul class="list">
+        <li><b>Certificado de uma autoridade</b> (Let's Encrypt) no lugar do próprio, e HSTS ligado junto.</li>
+        <li><b>Object storage</b> (S3 ou MinIO) e <code>migrate</code> como job separado — as duas que destravam a escala horizontal.</li>
+        <li><b>Segredos no orquestrador</b>, logs centralizados e os 41 testes rodando em CI antes do deploy.</li>
+      </ul>
+    </div>
+  </div>
 
   <div class="cols c-3-2">
     <div class="plain" style="align-self:center">
       <span class="tagline">Em miúdos</span>
-      <span>Agora eu confiro o <b>sobrenome</b> e a <b>identidade</b> do arquivo.</span>
+      <span>Nenhuma das limitações muda a infraestrutura que o trabalho pediu — todas são camadas acima dela.</span>
     </div>
     <div class="card">
       <p class="author" style="margin:0">Geisbelly Victória</p>
@@ -1391,7 +1544,7 @@ code { font-family: var(--mono); font-size: .92em; }
     </div>
   </div>
 
-  <div class="notes-src" hidden>Slide de fechamento técnico (1min15). Esse slide é estratégia: eu listo as fraquezas antes da banca listar, e cada uma já vem com o caminho ao lado. A primeira: eu confiro a assinatura dos primeiros bytes, o que pega executável renomeado, mas não valido o arquivo inteiro — um PDF com assinatura correta e conteúdo malicioso passaria; uma biblioteca dedicada cobriria mais formatos. A segunda: a CSP não se aplica ao /admin/, porque os templates dele usam script e estilo embutidos e a política o quebraria; como o admin exige login, o risco é menor, mas é uma exceção consciente. Fecho recapitulando os quatro requisitos em uma frase cada.</div>
+  <div class="notes-src" hidden>Slide de fechamento (1min30) — responde ao item 8 do enunciado, que pede exatamente três de cada. As vantagens eu digo com os exemplos concretos: o down seguido de up com o arquivo intacto, o banco sem porta publicada, e a mesma imagem rodando em qualquer provedor. As limitações eu levanto antes que a banca levante: a assinatura cobre o começo do arquivo e não o conteúdo inteiro; é autenticação e não autorização, porque qualquer pessoa logada vê tudo; e a solução está presa a um host, com o migrate no boot e um certificado autoassinado. As melhorias são as saídas de cada uma. Sobre o certificado: ele entrega a criptografia do tráfego, mas não a prova de identidade — quem atesta isso é uma autoridade certificadora, e o passo em produção é Let's Encrypt com renovação automática. Fecho recapitulando os quatro requisitos em uma frase cada.</div>
 </section>
 
 </div>
@@ -1536,7 +1689,7 @@ code { font-family: var(--mono); font-size: .92em; }
       },
       {
         on: ["s-nginx-zone", "s-nginx", "s-c-proxy", "s-zone", "s-app"], fly: ["s-c-proxy"], dur: 6000,
-        say: "<b>O nginx encaminha e acabou o papel dele.</b> Proxy reverso e nada mais — é o único dos três sem volume, porque não há nada nele que precise sobreviver."
+        say: "<b>O nginx encaminha e acabou o papel dele.</b> Proxy reverso e nada mais: ele não toca na mídia — os volumes que tem são só o do certificado e o dos logs."
       },
       {
         on: ["s-app", "s-c-vol", "s-l-vol", "s-volume"], fly: ["s-c-vol"], dur: 6400,

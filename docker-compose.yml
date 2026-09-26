@@ -31,11 +31,22 @@ services:
   nginx:
     build: ./nginx
     restart: unless-stopped
+    environment:
+      # a porta publicada no host entra no template pelo envsubst: sem ela o
+      # redirecionamento de HTTP apontaria para a 443 do host, que nao existe
+      TLS_PORT_PUBLICA: ${NGINX_TLS_PORT:-8443}
+      TLS_CN: ${TLS_CN:-localhost}
     ports:
       - "${NGINX_PORT:-8080}:80"
+      - "${NGINX_TLS_PORT:-8443}:443"
+    volumes:
+      - nginx_certs:/etc/nginx/certs   # certificado, para nao mudar a cada boot
+      - nginx_logs:/var/log/nginx      # acesso e erro, alem do stdout
     depends_on:
       - web
 
 volumes:
   postgres_data:   # dados do PostgreSQL
   media_data:      # arquivos enviados pelo upload
+  nginx_certs:     # certificado TLS gerado na primeira subida
+  nginx_logs:      # logs de acesso e de erro do proxy

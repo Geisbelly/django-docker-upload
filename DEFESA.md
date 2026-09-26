@@ -18,27 +18,31 @@ animação, com os 16 passos desde o build da imagem.
 
 Alvo: **12 a 15 minutos** de fala + demo, deixando espaço para perguntas.
 
-| # | Slide | Tempo | A mensagem que precisa passar |
+| # | Slide | Tempo | Item do enunciado |
 |---|---|---|---|
-| 1 | Capa | 0:30 | O que é o projeto, em uma frase |
-| 2 | Escopo | 0:30 | Os quatro requisitos estão cobertos, e onde |
-| 3 | Arquitetura | 1:45 | **Slide central.** Caminho da requisição + inventário: imagens, containers, volumes |
-| 4 | Computação em nuvem | 1:30 | Container × VM, imagem portátil, IaC, stateless, 12-Factor |
-| 5 | Simulador | 2:00 | **Slide central.** Animado: a aplicação grava e lê no volume; `down` não é `down -v` |
-| 6 | Caminho do upload | 1:15 | O nginx só repassa; validação e gravação acontecem dentro do container |
-| 7 | Banco de dados | 0:45 | O schema real: uma tabela minha, `arquivo` é `varchar(100)` |
-| 8 | Arquivos | 0:45 | Como o caminho é montado, o que vai para o banco, o que fica no disco |
-| 9 | Validação | 1:30 | As camadas que recusam: sessão, nome, extensão, tamanho, conteúdo |
-| 10 | Demo | 3:00 | Executar ao vivo |
-| 11 | Fechamento | 1:15 | Levantar as fraquezas antes da banca |
+| 1 | Capa | 0:30 | — |
+| 2 | Escopo | 0:30 | — |
+| 3 | Arquitetura | 1:45 | **1** · visão geral, portas, rede, volumes |
+| 4 | Computação em nuvem | 1:15 | — (conteúdo da disciplina) |
+| 5 | Dockerfile | 1:30 | **2** · imagem da aplicação |
+| 6 | Docker Compose | 1:30 | **3** · orquestração, serviço a serviço |
+| 7 | Nginx | 1:30 | **5** · proxy reverso e trechos da configuração |
+| 8 | Simulador | 1:45 | **6** · persistência, animada |
+| 9 | Caminho do upload | 1:15 | **7** · fluxo do upload |
+| 10 | Banco de dados | 0:45 | **4** e **6** · schema real |
+| 11 | Arquivos | 0:45 | **6** e **7** · caminho no disco |
+| 12 | Validação | 1:15 | — (segurança) |
+| 13 | Demo | 3:30 | — (mostra TLS, upload, volume e logs) |
+| 14 | Análise técnica | 1:30 | **8** · 3 vantagens, 3 limitações, 3 melhorias |
 
-Total: **14min45** contando a demo — o deck está no teto do alvo. Se a banca for
-rígida com o tempo, os slides **6**, **7** e **8** se resumem em uma frase cada
-sem perder o argumento.
+O item **4** (comunicação entre containers, DNS interno, portas internas e
+externas) está no slide 3 e volta no 6 e no 10.
 
-Os que **não** podem ser pulados são o **3**, o **4**, o **5** e o **9** — o 4
-amarra o trabalho à disciplina, o 3 e o 5 provam o requisito principal, e o 9
-responde a pergunta de segurança antes que ela venha.
+Total: **19min15** contando a demo — acima do alvo original de 12 a 15 minutos,
+porque o enunciado pede oito seções obrigatórias. Se a banca limitar o tempo, os
+que se resumem em uma frase são o **4**, o **11** e o **12**; os que **não** podem
+ser pulados são o **3**, o **5**, o **6**, o **7**, o **8** e o **14**, porque cada
+um responde diretamente a um item da avaliação.
 
 ---
 
@@ -176,11 +180,12 @@ daria:
    usa `expose` e o `db` não declara nada.
 2. **Limite de corpo.** `client_max_body_size 100M` corta um upload gigante no
    perímetro, antes de ocupar um worker do Gunicorn.
-3. **Lugar para o TLS.** É nele que o HTTPS entraria, sem a aplicação precisar
-   saber disso — ela já lê o esquema pelo `X-Forwarded-Proto`.
+3. **Terminação TLS.** O HTTPS acaba nele; dali para a aplicação o tráfego corre
+   em HTTP pela rede interna, e ela sabe a origem pelo `X-Forwarded-Proto`.
 
-O nginx **não serve arquivo** neste projeto: ele não monta volume nenhum e
-encaminha todas as rotas para a aplicação. Foi uma decisão deliberada de manter o
+O nginx **não serve arquivo de usuário** neste projeto: encaminha todas as rotas
+para a aplicação. Os volumes que ele monta são dele mesmo — o certificado e os
+logs. Foi uma decisão deliberada de manter o
 proxy com um papel só.
 
 > Analogia: o nginx é a recepção do prédio — filtra quem entra e encaminha todo
@@ -448,7 +453,10 @@ defesa para um risco que o projeto não tem.
 - [ ] Um arquivo **inválido** também separado, para mostrar a validação: renomeie
       qualquer coisa para `teste.exe`
 - [ ] Um arquivo **já enviado antes** da apresentação, para a home não estar vazia
-- [ ] Navegador aberto em `http://localhost:8080/`
+- [ ] Navegador aberto em `https://localhost:8443/`, **com a exceção do
+      certificado já aceita** — para não gastar o tempo da banca nessa tela
+- [ ] Um terminal com `docker compose logs -f nginx` rodando, se quiser mostrar
+      o log ao vivo
 - [ ] Terminal aberto na pasta do projeto, com fonte grande
 - [ ] `apresentacao-defesa.html` aberto no navegador, em tela cheia (`F`) e com as notas à mão (`N`)
 
@@ -462,12 +470,30 @@ docker compose ps
 Três serviços em execução, `db` marcado como `healthy`.
 
 ```bash
-curl http://localhost:8080/healthz/
+curl -k https://localhost:8443/healthz/
 ```
 Retorna `{"status": "ok"}` — a view roda `SELECT 1` no Postgres, então isso prova
 que a aplicação está falando com o banco.
 
-**No navegador**, em `http://localhost:8080/`. A primeira tela é o login — vale
+### Mostrar o TLS
+
+```bash
+curl -I http://localhost:8080/
+```
+Devolve `301` com `Location: https://localhost:8443/`. A porta 80 não serve nada:
+só empurra para o HTTPS.
+
+```bash
+echo | openssl s_client -connect localhost:8443 -servername localhost 2>/dev/null \
+  | openssl x509 -noout -subject -dates
+```
+Mostra o certificado gerado na primeira subida. Vale abrir o cadeado do navegador
+também: ele vai dizer que não confia, e essa é a deixa para a frase —
+**o autoassinado entrega a criptografia do tráfego, não a prova de identidade**;
+quem atesta identidade é uma autoridade certificadora.
+
+**No navegador**, em `https://localhost:8443/` — o navegador vai avisar do
+certificado autoassinado, e vale explicar por quê em uma frase antes de aceitar. A primeira tela é o login — vale
 mostrar de propósito, porque prova o controle de acesso em dois segundos. Depois
 de entrar:
 
@@ -492,10 +518,32 @@ docker compose exec web ls -l /vol/media/uploads
 O arquivo está dentro do container, no caminho de montagem do volume.
 
 ```bash
-docker volume ls | grep media
-docker volume inspect django-docker-upload_media_data
+docker volume ls | grep django-docker-upload
 ```
-Mostra que é um volume nomeado gerenciado pelo Docker, com o seu `Mountpoint`.
+Os quatro volumes nomeados: os dois de dados, o do certificado e o dos logs.
+
+### Mostrar os logs
+
+```bash
+docker compose exec nginx tail -3 /var/log/nginx/access.log
+```
+Uma linha por requisição, com dois campos além do padrão:
+
+```
+192.168.65.1 - - [26/Sep/2026:13:57:14] "GET /accounts/login/ HTTP/2.0" 200 5367 "-" "curl/8.7.1" req=0.024s upstream=0.023s
+192.168.65.1 - - [26/Sep/2026:13:57:14] "GET / HTTP/1.1" 301 169 "-" "curl/8.7.1" req=0.000s upstream=-s
+```
+
+Apontar as duas coisas: o `req=` contra o `upstream=` separa lentidão da
+aplicação de lentidão do caminho; e o `upstream=-` da segunda linha mostra uma
+requisição que **nem chegou à aplicação**, respondida pelo próprio nginx com o
+`301`.
+
+```bash
+docker compose logs --tail=5 nginx
+```
+As mesmas linhas aparecem aqui: o log vai para o arquivo **e** para o stdout, de
+propósito.
 
 **O momento principal:**
 
@@ -503,10 +551,14 @@ Mostra que é um volume nomeado gerenciado pelo Docker, com o seu `Mountpoint`.
 docker compose down
 docker compose up -d
 docker compose exec web ls -l /vol/media/uploads
+docker compose logs nginx | grep certificado
+docker compose exec nginx wc -l /var/log/nginx/access.log
 ```
 
-Containers destruídos e recriados do zero — o arquivo continua lá. Recarregar a
-home no navegador para confirmar que ele ainda aparece e ainda baixa.
+Containers destruídos e recriados do zero, e **três volumes provando persistência
+de uma vez só**: o arquivo continua lá, o log do nginx diz *"certificado já existe
+no volume, reaproveitando"*, e o `access.log` não zerou — cresceu. Recarregar a
+home no navegador para confirmar que o arquivo ainda aparece e ainda baixa.
 
 ### Plano B
 
@@ -586,6 +638,20 @@ inclusive a do `psycopg[binary]`. A Alpine usa musl, o que costuma forçar a
 compilação das dependências no build: mais lento e com mais chance de erro. A
 `slim` é o meio-termo entre tamanho e compatibilidade.
 
+**Por que só uma dependência de sistema, e por que essa?**
+O `postgresql-client` entra pelo `pg_isready`, que o `entrypoint.sh` usa para
+esperar o banco. O driver não precisa de nada do sistema: o `requirements.txt`
+pede `psycopg[binary]`, e o extra `binary` empacota a própria `libpq` dentro da
+wheel — é o que dispensa compilador no build. Dá para provar ao vivo:
+
+```bash
+docker compose exec web python -c "import psycopg; print(psycopg.pq.__impl__)"
+```
+
+Devolve `binary`. A `libpq5` do sistema até é instalada, mas como dependência do
+`postgresql-client`, e o driver não a usa. Eu cheguei a declará-la explicitamente
+no `Dockerfile` e removi depois de verificar isso.
+
 **Por que copiar o `requirements.txt` antes do código?**
 Cada instrução do Dockerfile vira uma camada com cache. Se eu copiasse o código
 antes, qualquer alteração em uma view invalidaria a camada do `pip install` e
@@ -617,7 +683,7 @@ Hoje, qualquer pessoa autenticada. É autenticação, não autorização — e e
 listado como limite consciente. Para separar por dono bastaria filtrar a lista
 por `request.user` e checar o dono na view que serve a mídia.
 
-**Por que dois volumes, e não um só?**
+**Por que quatro volumes?**
 Porque eles guardam coisas com ciclos de vida diferentes. O `postgres_data` é
 escrito pelo processo do Postgres, que precisa mandar sozinho naquele diretório,
 e se recupera com `pg_dump`/`restore`. O `media_data` guarda arquivo de usuário,
@@ -637,8 +703,8 @@ quanto o da aplicação: o que persiste é o volume `postgres_data`, montado em
 
 Vale explicitar a simetria, porque é o que mostra que a regra é geral e não um
 truque para o upload: **os três containers são descartáveis**. O `web` e o `db`
-têm cada um o seu volume; o `nginx` não tem nenhum, porque não há nada nele que
-precise sobreviver — ele só encaminha requisição.
+têm cada um o seu volume de dados, e o `nginx` tem dois próprios: o do
+certificado, para ele não mudar a cada boot, e o dos logs de acesso e erro.
 
 **Qual a diferença entre volume nomeado e bind mount?**
 O volume nomeado é gerenciado pelo Docker: não depende de caminho do host, funciona
@@ -675,8 +741,8 @@ interna. Isso me dá um ponto único de entrada para aplicar limites e, no futur
 encerrar o TLS.
 
 **Quem serve `/static/` e `/media/`?**
-A aplicação. O nginx aqui é proxy reverso e nada mais: não monta volume e não lê
-arquivo. Como o `django.contrib.staticfiles` só serve com `DEBUG` ligado, e a
+A aplicação. O nginx aqui é proxy reverso e terminação TLS: não lê arquivo de
+usuário. Como o `django.contrib.staticfiles` só serve com `DEBUG` ligado, e a
 `MEDIA_URL` nunca é servida automaticamente, as duas rotas são declaradas à mão
 em `app/config/urls.py`, com a view `django.views.static.serve` apontando para
 `STATIC_ROOT` e `MEDIA_ROOT`.
@@ -707,6 +773,49 @@ arquivo temporário no disco. São coisas diferentes.
 Para não brigarem entre si. Se o `proxy_read_timeout` do nginx fosse menor que o
 `--timeout` do Gunicorn, o cliente receberia 504 enquanto o worker ainda estivesse
 processando o upload. Iguais, os dois desistem no mesmo instante.
+
+### Sobre TLS e logs
+
+**Por que o certificado é autoassinado, e o que isso não entrega?**
+Porque não há domínio público nem autoridade certificadora no cenário do
+trabalho. O autoassinado entrega a **criptografia do tráfego** — ninguém lê a
+senha no caminho. O que ele **não** entrega é a **prova de identidade**: nenhuma
+autoridade atesta que aquele servidor é quem diz ser, e por isso o navegador
+avisa. Em produção, Let's Encrypt com renovação automática.
+
+**Onde o HTTPS termina?**
+No proxy. Do nginx para o Gunicorn o tráfego corre em HTTP, dentro da rede do
+Compose, que não é alcançável de fora. TLS de ponta a ponta só se justifica
+quando a rede entre proxy e aplicação não é confiável.
+
+**Como o Django sabe que a origem era HTTPS, se ele recebe HTTP?**
+Pelo cabeçalho `X-Forwarded-Proto`, que o nginx repassa, combinado com o
+`SECURE_PROXY_SSL_HEADER` no `settings.py`. É isso que faz os cookies `Secure`
+funcionarem: sem esse par, o Django acharia que a conexão é insegura e o cookie
+nunca seria enviado.
+
+**Por que o redirecionamento de HTTP precisa da porta numa variável?**
+Porque dentro do container o TLS está na 443, mas no host está publicado em 8443.
+`return 301 https://$host$request_uri` mandaria o navegador para a 443 **do
+host**, onde não há nada. A porta vem do Compose e entra pelo `envsubst`, por
+isso o arquivo é um `default.conf.template`. É o mesmo tipo de esquecimento do
+`$host` contra `$http_host`.
+
+**Por que o log vai para o arquivo e para o stdout ao mesmo tempo?**
+Se fosse só para o arquivo, o `docker compose logs` ficaria vazio e eu perderia a
+ferramenta padrão de diagnóstico. Se fosse só para o stdout, o histórico morreria
+com o container. Os dois destinos resolvem, ao custo de duplicar a escrita.
+
+**O que o `req=` e o `upstream=` do log dizem?**
+`request_time` é quanto durou a requisição inteira para o nginx;
+`upstream_response_time` é quanto o Gunicorn levou. A diferença é o tempo gasto
+na rede e no proxy — é assim que se separa lentidão da aplicação de lentidão do
+caminho. Quando aparece `upstream=-`, a requisição nem chegou à aplicação: foi
+respondida pelo próprio nginx, como no `301`.
+
+**Isso tem rotação de log?**
+Não, e é limitação conhecida: o `access.log` cresce sem parar. Em produção, seria
+`logrotate` ou coleta centralizada.
 
 ### Sobre o schema e os arquivos
 
@@ -820,8 +929,9 @@ equivalente. Para o escopo deste trabalho, extensão e tamanho cobrem o caso de
 uso; em produção eu acrescentaria a checagem de conteúdo.
 
 **O que faltaria para isso ir a produção?**
-TLS no nginx, segredos fora de arquivo, backup automatizado dos dois volumes
-(`pg_dump` para o banco, `tar` para a mídia),
+Certificado de autoridade no lugar do autoassinado, segredos fora de arquivo,
+backup automatizado dos volumes (`pg_dump` para o banco, `tar` para a mídia),
+rotação dos logs,
 centralização de logs, e um pipeline de CI rodando os testes antes do deploy.
 
 ### Sobre escala

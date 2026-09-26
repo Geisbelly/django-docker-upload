@@ -1,0 +1,13 @@
+docker compose up --build -d                        #builder
+
+docker compose ps                                   #validar se subiu
+
+curl localhost:8080/healthz/                        #verificar saude
+
+docker compose exec web ls -l /vol/media/uploads    #arquivos
+
+docker compose down
+
+docker compose up -d
+
+docker compose down -v
