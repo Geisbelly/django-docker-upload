@@ -1,0 +1,1743 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Django em três containers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Cinzel:wght@400;500;600&family=Yeseva+One&family=Jost:wght@300;400;500;600&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+/* ---------------------------------------------------------------------------
+   Deck de defesa — Django + Gunicorn + Nginx + PostgreSQL
+   Conteúdo e notas portados do apresentacao-defesa.pptx.
+   Navegação: ← → espaço · N notas · O índice · T cronômetro · F tela cheia
+--------------------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------------------
+   Paleta e tipografia do portfólio: geisbelly.github.io/Geisbelly
+   Navy sobre preto, ouro e creme, com Cinzel / Cormorant / Yeseva One / Jost.
+   O tema escuro é o padrão; o botão "Tema" troca para a versão clara, que é
+   o plano B se o projetor lavar os pretos.
+--------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+
+  --paper:      #0B0D0F;   /* fundo atrás dos slides */
+  --surface:    #111A29;   /* o slide */
+  --surface-2:  #0D1420;   /* caixas dentro do slide */
+  --ink:        #F2E6C9;   /* creme */
+  --ink-soft:   #DCD0B4;
+  --muted:      #9AA4B8;   /* mist */
+  --line:       rgba(184,155,97,.42);
+  --line-soft:  rgba(184,155,97,.16);
+
+  --accent:     #B89B61;   /* ouro */
+  --accent-ink: #D9C08A;   /* ouro claro */
+  --accent-bg:  rgba(184,155,97,.13);
+
+  --ok:         #8FBF9F;
+  --ok-bg:      rgba(143,191,159,.13);
+  --warn:       #E0A85C;
+  --warn-bg:    rgba(224,168,92,.13);
+  --stop:       #D08A7A;
+  --stop-bg:    rgba(208,138,122,.13);
+
+  --shadow: 0 2px 6px rgba(0,0,0,.45), 0 22px 60px rgba(0,0,0,.55);
+
+  --display: "Yeseva One", "Cormorant", Georgia, serif;
+  --caps:    "Cinzel", "Cormorant", Georgia, serif;
+  --serif:   "Cormorant", Georgia, serif;
+  --body:    "Jost", "Helvetica Neue", Arial, sans-serif;
+  --mono:    "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+/* versão clara: creme e tinta navy, para projetor que lava o preto */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --paper:      #E8DFC9;
+  --surface:    #F7F1E4;
+  --surface-2:  #EFE7D4;
+  --ink:        #111A29;
+  --ink-soft:   #2C3A4E;
+  --muted:      #6B7488;
+  --line:       rgba(140,116,64,.45);
+  --line-soft:  rgba(140,116,64,.20);
+  --accent:     #8C7440;
+  --accent-ink: #6F5B2E;
+  --accent-bg:  rgba(140,116,64,.12);
+  --ok:         #3F7A5B;
+  --ok-bg:      rgba(63,122,91,.12);
+  --warn:       #8A5E1C;
+  --warn-bg:    rgba(138,94,28,.12);
+  --stop:       #9B4436;
+  --stop-bg:    rgba(155,68,54,.12);
+  --shadow: 0 1px 3px rgba(17,26,41,.10), 0 12px 36px rgba(17,26,41,.12);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+
+/* ------------------------------- barra topo ------------------------------ */
+
+.hud {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 18px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line-soft);
+  font-family: var(--caps);
+  position: fixed;
+}
+.hud-id {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hud-id b { color: var(--ink); font-weight: 700; }
+.hud-spacer { flex: 1; }
+.hud button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.hud button:hover { border-color: var(--accent); color: var(--accent); }
+.hud button[aria-pressed="true"] { background: var(--accent-bg); border-color: var(--accent); color: var(--accent-ink); }
+.hud button:focus-visible, .ov-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.clock { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.clock.over { color: var(--warn); font-weight: 700; }
+
+/* mora na borda inferior do HUD: solta no topo, ela cruzava a faixa do número */
+.progress {
+  position: absolute;
+  bottom: -1px; left: 0;
+  height: 2px;
+  background: var(--accent);
+  transition: width .2s ease;
+}
+
+/* --------------------------------- palco --------------------------------- */
+
+.stage {
+  position: relative;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.scaler {
+  width: 1280px;
+  height: 720px;
+  position: relative;
+  transform-origin: center center;
+  flex: none;
+}
+.slide {
+  position: absolute;
+  inset: 0;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 46px 58px 48px;
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+}
+.slide.is-active { display: flex; }
+@media (prefers-reduced-motion: no-preference) {
+  .slide.is-active { animation: rise .24s ease both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+}
+
+/* ------------------------------ tipografia ------------------------------- */
+
+.eyebrow {
+  font-family: var(--display);
+  font-family: var(--caps);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 12px;
+}
+.stitle {
+  font-family: var(--display);
+  font-size: 42px;
+  font-weight: 400;
+  line-height: 1.14;
+  letter-spacing: 0;
+  color: var(--ink);
+  margin: 0 0 6px;
+  text-wrap: balance;
+}
+.slide p { margin: 0; }
+.deck { font-size: 22px; color: var(--ink-soft); margin: 0 0 18px; max-width: 76ch; }
+.small { font-size: 16.5px; color: var(--muted); }
+.mono { font-family: var(--mono); }
+code { font-family: var(--mono); font-size: .92em; }
+.rule { height: 1px; background: var(--line-soft); margin: 14px 0; }
+
+/* -------------------------------- blocos --------------------------------- */
+
+.cols { display: grid; gap: 16px; }
+.c2 { grid-template-columns: 1fr 1fr; }
+.c3 { grid-template-columns: repeat(3, 1fr); }
+.c-3-2 { grid-template-columns: 3fr 2fr; }
+.c-2-3 { grid-template-columns: 2fr 3fr; }
+
+.card {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 15px 17px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.card h3 {
+  font-family: var(--body);
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: .01em;
+  color: var(--ink);
+}
+.card p { font-size: 18.5px; color: var(--ink-soft); }
+.card .src { font-family: var(--mono); font-size: 16px; color: var(--muted); margin-top: auto; padding-top: 6px; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 32px;
+  flex: none;
+  border-radius: 7px;
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 700;
+  background: var(--accent-bg);
+  color: var(--accent-ink);
+}
+.badge.ok   { background: var(--ok-bg);   color: var(--ok); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+.badge.stop { background: var(--stop-bg); color: var(--stop); }
+
+.row { display: flex; gap: 11px; align-items: center; }
+
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.list li { display: flex; gap: 12px; font-size: 18.5px; color: var(--ink-soft); line-height: 1.35; }
+.list li::before {
+  content: "";
+  flex: none;
+  width: 7px; height: 7px;
+  margin-top: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.list.neutral li::before { background: var(--line); }
+.list.stop li::before { background: var(--stop); }
+
+.kv { display: flex; flex-direction: column; }
+.kv > div {
+  display: grid;
+  grid-template-columns: 145px 1fr;
+  gap: 14px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line-soft);
+  font-size: 19px;
+}
+.kv > div:first-child { border-top: 0; }
+.kv .k { font-family: var(--mono); font-size: 16px; color: var(--accent-ink); padding-top: 2px; }
+.kv .v { color: var(--ink-soft); }
+
+.code {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 14px 16px;
+  font-family: var(--mono);
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  white-space: pre;
+  overflow-x: auto;
+}
+.code .cm { color: var(--muted); }
+.code .ok { color: var(--ok); }
+.code .pr { color: var(--muted); }
+
+.callout {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  border-radius: 8px;
+  padding: 15px 19px;
+  font-size: 18.5px;
+  line-height: 1.4;
+  background: var(--accent-bg);
+  color: var(--ink-soft);
+}
+.callout.warn { background: var(--warn-bg); }
+.callout.ok { background: var(--ok-bg); }
+.callout b { color: var(--ink); }
+
+/* "em miúdos": a versão em linguagem de gente */
+.plain {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  border-left: 3px solid var(--ok);
+  background: var(--ok-bg);
+  border-radius: 0 8px 8px 0;
+  padding: 15px 19px;
+  font-size: 20px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+.plain .tagline {
+  font-family: var(--caps);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ok);
+  flex: none;
+}
+.plain b { color: var(--ink); }
+
+/* ------------------------------- diagramas ------------------------------- */
+
+/* flex: none e essencial — sem isso a SVG encolhe para caber e o diagrama
+   vira uma tira, em vez de o slide acusar que o conteudo nao cabe. */
+.dg { display: block; width: 100%; height: auto; flex: none; margin: 2px 0 8px; }
+.dg text { font-family: var(--body); }
+.dg .box   { fill: var(--surface-2); stroke: var(--line); stroke-width: 1.5; }
+.dg .box-a { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+.dg .box-k { fill: var(--ok-bg); stroke: var(--ok); stroke-width: 1.5; }
+.dg .box-s { fill: var(--stop-bg); stroke: var(--stop); stroke-width: 1.5; }
+.dg .box-w { fill: var(--warn-bg); stroke: var(--warn); stroke-width: 1.5; }
+.dg .ghost { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 7 6; }
+.dg .name  { font-family: var(--body); font-weight: 600; font-size: 19px; fill: var(--ink); }
+.dg .name-s { font-family: var(--body); font-weight: 600; font-size: 16px; fill: var(--ink); }
+.dg .sub   { font-size: 13.5px; fill: var(--muted); }
+.dg .code-l { font-family: var(--mono); font-size: 13px; fill: var(--accent-ink); }
+.dg .zone-l { font-family: var(--caps); font-size: 11.5px; font-weight: 600; letter-spacing: .18em; fill: var(--muted); }
+.dg .edge   { stroke: var(--muted); stroke-width: 1.8; fill: none; marker-end: url(#ar); }
+.dg .edge-a { stroke: var(--accent); stroke-width: 2; fill: none; marker-end: url(#ar-a); }
+.dg .edge-k { stroke: var(--ok); stroke-width: 2; fill: none; marker-end: url(#ar-k); }
+.dg .edge-s { stroke: var(--stop); stroke-width: 2; fill: none; marker-end: url(#ar-s); stroke-dasharray: 6 4; }
+.dg .lbl    { font-family: var(--mono); font-size: 12.5px; fill: var(--muted); }
+.dg .lbl-a  { font-family: var(--mono); font-size: 12.5px; fill: var(--accent-ink); }
+.dg .lbl-k  { font-family: var(--mono); font-size: 12.5px; fill: var(--ok); }
+.dg .lbl-s  { font-family: var(--mono); font-size: 12.5px; fill: var(--stop); }
+.dg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* pilha de camadas (slide 6) */
+.stack { display: flex; flex-direction: column; gap: 5px; }
+.layer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--mono);
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--line-soft);
+  background: var(--surface-2);
+  color: var(--ink-soft);
+}
+.layer .mark { font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .06em; }
+.layer.cached { background: var(--ok-bg); border-color: transparent; }
+.layer.cached .mark { color: var(--ok); }
+.layer.redo { background: var(--warn-bg); border-color: transparent; }
+.layer.redo .mark { color: var(--warn); }
+.layer .txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --------------------------------- capa ---------------------------------- */
+
+.cover .kicker {
+  font-family: var(--caps);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .34em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.cover h1 {
+  font-family: var(--display);
+  font-size: 56px;
+  font-weight: 400;
+  letter-spacing: .01em;
+  line-height: 1.12;
+  margin: 16px 0 0;
+  text-wrap: balance;
+}
+.cover .sub { font-size: 23px; color: var(--ink-soft); margin-top: 14px; max-width: 62ch; }
+.cover .meta {
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  gap: 28px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.author { font-family: var(--display); font-weight: 400; font-size: 25px; color: var(--ink); letter-spacing: -.01em; margin: 0 0 4px; }
+.cover .repo { font-family: var(--mono); font-size: 16px; color: var(--muted); margin: 0; }
+
+/* --------------------------------- notas --------------------------------- */
+
+.notes {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 45;
+  max-height: 42vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-top: 2px solid var(--accent);
+  box-shadow: 0 -10px 30px rgba(0,0,0,.12);
+  padding: 18px 22px;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+}
+.notes h4 {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+.notes p { margin: 0; font-size: 15.5px; line-height: 1.55; max-width: 100ch; color: var(--ink-soft); }
+
+/* -------------------------------- índice --------------------------------- */
+
+.overview {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--paper);
+  overflow-y: auto;
+  padding: 76px 24px 40px;
+}
+.ov-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+.ov-item {
+  text-align: left;
+  font: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: inherit;
+}
+.ov-item:hover { border-color: var(--accent); }
+.ov-item[aria-current="true"] { border-color: var(--accent); background: var(--accent-bg); }
+.ov-item .ov-n { font-family: var(--mono); font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+.ov-item .ov-t { font-family: var(--display); font-weight: 700; font-size: 15.5px; line-height: 1.25; }
+.ov-item .ov-e { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+
+/* -------------------------------- ajuda ---------------------------------- */
+
+.help { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(9,19,25,.55); padding: 20px; }
+.help-box { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 24px 26px; max-width: 460px; width: 100%; box-shadow: var(--shadow); }
+.help-box h4 { font-family: var(--display); margin: 0 0 14px; font-size: 18px; }
+.help-box dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-size: 15px; }
+.help-box dt { font-family: var(--mono); font-size: 13px; color: var(--accent-ink); }
+.help-box dd { margin: 0; color: var(--ink-soft); }
+
+/* --------------------------- enfeites do tema ---------------------------- */
+
+/* o slide ganha o fio de ouro e os cantos do portfólio */
+.slide::before,
+.slide::after {
+  content: "";
+  position: absolute;
+  width: 26px; height: 26px;
+  border: 1px solid var(--accent);
+  opacity: .55;
+  pointer-events: none;
+}
+.slide::before { top: 16px; left: 16px; border-right: 0; border-bottom: 0; }
+.slide::after { bottom: 16px; right: 16px; border-left: 0; border-top: 0; }
+
+/* céu: pontinhos de luz bem discretos, como no portfólio */
+.scaler {
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(242,230,201,.30), transparent 60%),
+    radial-gradient(1.5px 1.5px at 78% 12%, rgba(184,155,97,.32), transparent 60%),
+    radial-gradient(1.2px 1.2px at 32% 82%, rgba(242,230,201,.22), transparent 60%),
+    radial-gradient(1.6px 1.6px at 88% 72%, rgba(217,192,138,.26), transparent 60%),
+    radial-gradient(1.2px 1.2px at 58% 38%, rgba(242,230,201,.18), transparent 60%);
+}
+:root[data-theme="light"] .scaler { background-image: none; }
+
+/* fio de ouro que se desenha sob o título quando o slide entra */
+.stitle::after {
+  content: "";
+  display: block;
+  height: 1px;
+  margin-top: 14px;
+  background: linear-gradient(90deg, var(--accent), var(--line-soft) 62%, transparent);
+  transform-origin: left center;
+}
+.slide.is-active .stitle::after { animation: fio .7s cubic-bezier(.2,.7,.3,1) both; }
+@keyframes fio { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* losango de ouro antes do olho do slide, como os ✦ do portfólio */
+.eyebrow::before {
+  content: "✦";
+  margin-right: 12px;
+  font-size: .85em;
+  color: var(--accent);
+  opacity: .85;
+}
+
+/* entrada escalonada: cada bloco do slide sobe um pouco depois do anterior */
+.slide.is-active > * { animation: sobe .5s ease both; }
+.slide.is-active > *:nth-child(1) { animation-delay: .02s; }
+.slide.is-active > *:nth-child(2) { animation-delay: .08s; }
+.slide.is-active > *:nth-child(3) { animation-delay: .14s; }
+.slide.is-active > *:nth-child(4) { animation-delay: .20s; }
+.slide.is-active > *:nth-child(5) { animation-delay: .26s; }
+@keyframes sobe { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* o traço do HUD e o botão ativo ganham o brilho do ouro */
+.hud button[aria-pressed="true"] { box-shadow: 0 0 0 1px var(--accent) inset; }
+.progress { box-shadow: 0 1px 6px rgba(184,155,97,.5); }
+
+@media (prefers-reduced-motion: reduce) {
+  .slide.is-active > *,
+  .slide.is-active .stitle::after { animation: none; }
+}
+
+/* ------------------------------- simulador ------------------------------- */
+
+.sim .el { opacity: .2; transition: opacity .45s ease; }
+.sim .el.on { opacity: 1; }
+.sim .ghost { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 7 6; }
+.sim .conn { stroke: var(--line); stroke-width: 2; fill: none; }
+.sim .el.on.conn { stroke: var(--accent); }
+
+.sim-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.sim-bar button {
+  font: inherit;
+  font-family: var(--display);
+  font-size: 15px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-soft);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  flex: none;
+}
+.sim-bar button:hover { border-color: var(--accent); color: var(--accent); }
+.sim-bar button.sim-go { background: var(--accent); border-color: var(--accent); color: #fff; min-width: 104px; }
+:root[data-theme="dark"] .sim-bar button.sim-go,
+:root:not([data-theme="light"]) .sim-bar button.sim-go { color: #06131b; }
+.sim-count { font-family: var(--mono); font-size: 16px; color: var(--muted); flex: none; font-variant-numeric: tabular-nums; }
+.sim-say { font-size: 19px; color: var(--ink-soft); line-height: 1.3; }
+.sim-say b { color: var(--ink); }
+
+/* ------------------------- modo leitura (telefone) ------------------------ */
+
+@media (max-width: 860px), (max-height: 460px) {
+  .stage { display: block; height: auto; overflow: visible; padding: 64px 16px 40px; }
+  .scaler { width: auto; height: auto; transform: none !important; display: flex; flex-direction: column; gap: 16px; }
+  .slide {
+    position: static;
+    display: flex !important;
+    inset: auto;
+    padding: 26px 18px 28px;
+    animation: none;
+    scroll-margin-top: 68px;
+  }
+  /* os cantos da moldura caem sobre o texto no layout estreito */
+  .slide::before, .slide::after { display: none; }
+  .stitle { font-size: 25px; }
+  .cover h1 { font-size: 32px; }
+  .cover .sub, .deck { font-size: 17px; }
+  .cols { gap: 14px; }
+  .c2, .c3, .c-3-2, .c-2-3 { grid-template-columns: 1fr; }
+  .kv > div { grid-template-columns: 1fr !important; gap: 2px; }
+  .notes { position: static; max-height: none; box-shadow: none; border-top: 1px solid var(--line-soft); border-radius: 8px; margin-top: 16px; }
+  .hud-hide-sm { display: none; }
+}
+</style>
+</head>
+<body>
+
+<svg class="dg-defs" aria-hidden="true" focusable="false">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--muted)"></path>
+    </marker>
+    <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"></path>
+    </marker>
+    <marker id="ar-k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--ok)"></path>
+    </marker>
+    <marker id="ar-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--stop)"></path>
+    </marker>
+  </defs>
+</svg>
+
+<header class="hud">
+  <div class="progress" id="progress" style="width:0"></div>
+  <span class="hud-id"><b id="hudNum">1 / 15</b> &nbsp;·&nbsp; <span id="hudTitle"></span></span>
+  <span class="hud-spacer"></span>
+  <span class="clock hud-hide-sm" id="clock">00:00 / 15:00</span>
+  <button id="btnTimer" class="hud-hide-sm" aria-pressed="false" title="Cronômetro (T)">Tempo</button>
+  <button id="btnNotes" aria-pressed="false" title="Notas do apresentador (N)">Notas</button>
+  <button id="btnOv" aria-pressed="false" title="Índice dos slides (O)">Índice</button>
+  <button id="btnTheme" class="hud-hide-sm" title="Tema claro/escuro">Tema</button>
+  <button id="btnHelp" title="Atalhos (?)">?</button>
+</header>
+
+<main class="stage" id="stage">
+<div class="scaler" id="scaler">
+
+<!-- ============================== 1 · capa ============================== -->
+<section class="slide cover is-active" data-eyebrow="Capa" data-title="Django + Gunicorn + Nginx + PostgreSQL" data-time="0:30">
+  <div class="kicker">Computação em Nuvem · Defesa de projeto</div>
+  <h1>Django + Gunicorn<br>+ Nginx + PostgreSQL</h1>
+  <p class="sub">Três containers, uma porta aberta e um arquivo que sobrevive à destruição deles — o problema clássico de estado em ambiente efêmero.</p>
+
+  <svg class="dg" viewBox="0 0 1160 140" role="img" aria-label="navegador chega no nginx, que fala com o web, que fala com o db">
+    <rect class="box" x="2" y="26" width="170" height="74" rx="8"></rect>
+    <text class="name-s" x="87" y="58" text-anchor="middle">navegador</text>
+    <text class="sub" x="87" y="79" text-anchor="middle">quem envia</text>
+
+    <path class="edge-a" d="M180 63 H 268"></path>
+    <text class="lbl-a" x="224" y="52" text-anchor="middle">:8080</text>
+
+    <rect class="box-a" x="276" y="26" width="250" height="74" rx="8"></rect>
+    <text class="name" x="401" y="58" text-anchor="middle">nginx</text>
+    <text class="sub" x="401" y="79" text-anchor="middle">proxy reverso</text>
+
+    <path class="edge" d="M534 63 H 622"></path>
+    <text class="lbl" x="578" y="52" text-anchor="middle">:8000</text>
+
+    <rect class="box" x="630" y="26" width="250" height="74" rx="8"></rect>
+    <text class="name" x="755" y="58" text-anchor="middle">web</text>
+    <text class="sub" x="755" y="79" text-anchor="middle">django + gunicorn</text>
+
+    <path class="edge" d="M888 63 H 976"></path>
+    <text class="lbl" x="932" y="52" text-anchor="middle">:5432</text>
+
+    <rect class="box" x="984" y="26" width="172" height="74" rx="8"></rect>
+    <text class="name" x="1070" y="58" text-anchor="middle">db</text>
+    <text class="sub" x="1070" y="79" text-anchor="middle">postgresql</text>
+  </svg>
+
+  <div class="meta">
+    <div>
+      <p class="author">Geisbelly Victória</p>
+      <p class="repo">github.com/Geisbelly/django-docker-upload</p>
+    </div>
+  </div>
+
+  <div class="notes-src" hidden>Abertura (30s). Aplicação Django containerizada em três serviços, com upload de arquivo que sobrevive à destruição dos containers. Vou mostrar a arquitetura, as decisões, como a persistência funciona, e no fim uma demo ao vivo provando que o arquivo não se perde.</div>
+</section>
+
+<!-- ============================= 2 · escopo ============================= -->
+<section class="slide" data-eyebrow="Escopo" data-title="O que foi pedido, e onde está" data-time="0:45">
+  <p class="eyebrow">Escopo</p>
+  <h2 class="stitle">O que foi pedido, e onde está</h2>
+
+  <svg class="dg" viewBox="0 0 1160 356" role="img" aria-label="os quatro requisitos do enunciado e o arquivo do repositório que responde por cada um">
+    <!-- 1 -->
+    <rect class="box" x="0" y="8" width="272" height="316" rx="10"></rect>
+    <circle cx="36" cy="46" r="18" fill="var(--surface)"></circle><circle cx="36" cy="46" r="18" fill="var(--ok-bg)"></circle>
+    <text class="name-s" x="36" y="53" text-anchor="middle" style="fill:var(--ok)">✓</text>
+    <text class="name-s" x="66" y="42">Django com</text>
+    <text class="name-s" x="66" y="64">Gunicorn</text>
+    <text class="sub" x="22" y="112">Imagem própria, construída a</text>
+    <text class="sub" x="22" y="134">partir de python:3.12-slim.</text>
+    <text class="sub" x="22" y="164">Três workers na porta 8000.</text>
+    <rect class="box-a" x="22" y="258" width="228" height="42" rx="6"></rect>
+    <text class="code-l" x="136" y="284" text-anchor="middle">Dockerfile</text>
+
+    <!-- 2 -->
+    <rect class="box" x="296" y="8" width="272" height="316" rx="10"></rect>
+    <circle cx="332" cy="46" r="18" fill="var(--surface)"></circle><circle cx="332" cy="46" r="18" fill="var(--ok-bg)"></circle>
+    <text class="name-s" x="332" y="53" text-anchor="middle" style="fill:var(--ok)">✓</text>
+    <text class="name-s" x="362" y="42">Nginx como</text>
+    <text class="name-s" x="362" y="64">proxy reverso</text>
+    <text class="sub" x="318" y="112">Recebe o navegador na única</text>
+    <text class="sub" x="318" y="134">porta publicada e encaminha</text>
+    <text class="sub" x="318" y="164">tudo para a aplicação.</text>
+    <rect class="box-a" x="318" y="258" width="228" height="42" rx="6"></rect>
+    <text class="code-l" x="432" y="284" text-anchor="middle">nginx/default.conf</text>
+
+    <!-- 3 -->
+    <rect class="box" x="592" y="8" width="272" height="316" rx="10"></rect>
+    <circle cx="628" cy="46" r="18" fill="var(--surface)"></circle><circle cx="628" cy="46" r="18" fill="var(--ok-bg)"></circle>
+    <text class="name-s" x="628" y="53" text-anchor="middle" style="fill:var(--ok)">✓</text>
+    <text class="name-s" x="658" y="42">PostgreSQL</text>
+    <text class="name-s" x="658" y="64">em container</text>
+    <text class="sub" x="614" y="112">Com healthcheck: a aplicação</text>
+    <text class="sub" x="614" y="134">só sobe quando o banco</text>
+    <text class="sub" x="614" y="164">aceita conexão de verdade.</text>
+    <rect class="box-a" x="614" y="258" width="228" height="42" rx="6"></rect>
+    <text class="code-l" x="728" y="284" text-anchor="middle">docker-compose.yml</text>
+
+    <!-- 4 -->
+    <rect class="box-k" x="888" y="8" width="272" height="316" rx="10"></rect>
+    <circle cx="924" cy="46" r="18" fill="var(--surface)"></circle><circle cx="924" cy="46" r="18" fill="var(--ok-bg)"></circle>
+    <text class="name-s" x="924" y="53" text-anchor="middle" style="fill:var(--ok)">✓</text>
+    <text class="name-s" x="954" y="42">Upload salvo</text>
+    <text class="name-s" x="954" y="64">em volume</text>
+    <text class="sub" x="910" y="112">Gravado em /vol/media:</text>
+    <text class="sub" x="910" y="134">armazenamento persistente,</text>
+    <text class="sub" x="910" y="164">fora do ciclo do container.</text>
+    <text class="zone-l" x="910" y="212" style="fill:var(--ok)">O REQUISITO PRINCIPAL</text>
+    <rect class="box-a" x="910" y="258" width="228" height="42" rx="6"></rect>
+    <text class="code-l" x="1024" y="284" text-anchor="middle">core/models.py</text>
+  </svg>
+
+  <div class="notes-src" hidden>Slide de contrato (45s). Leio o enunciado como checklist e digo onde cada exigência está no repositório — o arquivo aparece no rodapé de cada coluna, então dá para abrir na hora se alguém pedir. A quarta está destacada de propósito: é o requisito principal, e o resto da apresentação gira em torno dele. A ideia é deixar claro desde o início que nada do pedido ficou de fora, para o resto ser sobre COMO, não SE.</div>
+</section>
+
+<!-- =========================== 3 · arquitetura =========================== -->
+<section class="slide" data-eyebrow="Arquitetura" data-title="Três containers, uma porta publicada" data-time="2:00">
+  <p class="eyebrow">Arquitetura</p>
+  <h2 class="stitle">Três containers, uma porta publicada</h2>
+  <p class="deck">Rede isolada, uma porta de entrada, serviços que se acham por nome.</p>
+
+  <svg class="dg" viewBox="0 0 1160 258" role="img" aria-label="diagrama da arquitetura: navegador, nginx, web e db, com os volumes montados na aplicação">
+    <rect class="ghost" x="238" y="4" width="918" height="250" rx="12"></rect>
+    <text class="zone-l" x="1140" y="24" text-anchor="end">REDE INTERNA DO COMPOSE</text>
+
+    <rect class="box" x="2" y="38" width="150" height="70" rx="8"></rect>
+    <text class="name-s" x="77" y="68" text-anchor="middle">navegador</text>
+    <text class="sub" x="77" y="88" text-anchor="middle">fora do Docker</text>
+
+    <path class="edge-a" d="M160 73 H 262"></path>
+    <text class="lbl-a" x="211" y="62" text-anchor="middle">:8080</text>
+    <text class="lbl" x="211" y="96" text-anchor="middle">a única</text>
+
+    <rect class="box-a" x="270" y="32" width="216" height="82" rx="8"></rect>
+    <text class="name" x="378" y="62" text-anchor="middle">nginx</text>
+    <text class="sub" x="378" y="83" text-anchor="middle">proxy reverso · sem volume</text>
+    <text class="code-l" x="378" y="103" text-anchor="middle">ports 8080 → 80</text>
+
+    <path class="edge" d="M494 73 H 596"></path>
+    <text class="lbl" x="545" y="62" text-anchor="middle">web:8000</text>
+
+    <rect class="box" x="604" y="32" width="216" height="82" rx="8"></rect>
+    <text class="name" x="712" y="62" text-anchor="middle">web</text>
+    <text class="sub" x="712" y="83" text-anchor="middle">gunicorn · 3 workers</text>
+    <text class="code-l" x="712" y="103" text-anchor="middle">expose 8000</text>
+
+    <path class="edge" d="M828 73 H 930"></path>
+    <text class="lbl" x="879" y="62" text-anchor="middle">db:5432</text>
+
+    <rect class="box" x="938" y="32" width="200" height="82" rx="8"></rect>
+    <text class="name" x="1038" y="62" text-anchor="middle">db</text>
+    <text class="sub" x="1038" y="83" text-anchor="middle">postgres · healthcheck</text>
+    <text class="code-l" x="1038" y="103" text-anchor="middle">sem porta no host</text>
+
+    <path class="edge-k" d="M712 118 V 152"></path>
+    <text class="lbl-k" x="726" y="142">lê e grava</text>
+    <path class="edge" d="M1038 118 V 152"></path>
+
+    <rect class="box-k" x="270" y="158" width="550" height="86" rx="8"></rect>
+    <text class="name-s" x="545" y="186" text-anchor="middle">volume media_data</text>
+    <text class="code-l" x="545" y="208" text-anchor="middle">/vol/media → os arquivos enviados</text>
+    <text class="sub" x="545" y="230" text-anchor="middle">montado só no web — o nginx não toca nele</text>
+    
+
+    <rect class="box" x="900" y="158" width="238" height="86" rx="8"></rect>
+    <text class="name-s" x="1019" y="186" text-anchor="middle">postgres_data</text>
+    <text class="code-l" x="1019" y="208" text-anchor="middle">/var/lib/postgresql</text>
+    <text class="sub" x="1019" y="230" text-anchor="middle">dados do banco</text>
+  </svg>
+
+  <div class="kv">
+    <div style="grid-template-columns:200px 1fr">
+      <span class="k">3 imagens</span>
+      <span class="v"><code>…-web</code> do Dockerfile · <code>…-nginx</code> de nginx/Dockerfile · <code>postgres:16-alpine</code> do registry</span>
+    </div>
+    <div style="grid-template-columns:200px 1fr">
+      <span class="k">3 containers</span>
+      <span class="v">nginx <code>8080→80</code> · web com gunicorn e <code>appuser</code> · db com healthcheck e sem porta</span>
+    </div>
+    <div style="grid-template-columns:200px 1fr">
+      <span class="k">2 volumes</span>
+      <span class="v"><code>media_data</code> em /vol/media · <code>postgres_data</code> em /var/lib/postgresql — o nginx não tem nenhum</span>
+    </div>
+  </div>
+
+  <div class="notes-src" hidden>Slide central (2min). Percurso da requisição: navegador bate no nginx na 8080, nginx repassa para gunicorn em web:8000, Django fala com o Postgres em db:5432. Dois pontos que precisam ficar: (1) superfície de ataque — só uma porta publicada, o banco não é alcançável de fora; (2) os volumes são montados só no container da aplicação — o nginx não monta nenhum e não serve arquivo; é proxy reverso e nada mais. Se perguntarem quem entrega /media/ e /static/: é o Django, por rotas declaradas em config/urls.py, porque com DEBUG=0 ele não serve isso sozinho. O custo é que cada download ocupa um worker do Gunicorn; em troca, o proxy tem um papel só. Cada container tem um processo e um ciclo de vida: dá para trocar a versão do nginx sem reconstruir a imagem do Django.</div>
+</section>
+
+<!-- ============================= 4 · nuvem ============================= -->
+<section class="slide" data-eyebrow="Computação em nuvem" data-title="Onde cada conceito da disciplina aparece" data-time="1:30">
+  <p class="eyebrow">Computação em nuvem</p>
+  <h2 class="stitle">Container não é máquina virtual</h2>
+
+  <svg class="dg" viewBox="0 0 1160 344" role="img" aria-label="comparação entre máquina virtual, que virtualiza hardware, e container, que compartilha o kernel do host">
+    <!-- maquina virtual -->
+    <text class="zone-l" x="0" y="18">MÁQUINA VIRTUAL — VIRTUALIZA O HARDWARE</text>
+
+    <rect class="box" x="0" y="34" width="262" height="150" rx="8"></rect>
+    <text class="name-s" x="131" y="62" text-anchor="middle">app</text>
+    <rect class="box-s" x="18" y="76" width="226" height="92" rx="6"></rect>
+    <text class="sub" x="131" y="108" text-anchor="middle" style="fill:var(--stop)">sistema operacional</text>
+    <text class="sub" x="131" y="130" text-anchor="middle" style="fill:var(--stop)">convidado, inteiro</text>
+    <text class="sub" x="131" y="156" text-anchor="middle" style="fill:var(--stop)">gigabytes · minutos para subir</text>
+
+    <rect class="box" x="278" y="34" width="262" height="150" rx="8"></rect>
+    <text class="name-s" x="409" y="62" text-anchor="middle">app</text>
+    <rect class="box-s" x="296" y="76" width="226" height="92" rx="6"></rect>
+    <text class="sub" x="409" y="108" text-anchor="middle" style="fill:var(--stop)">sistema operacional</text>
+    <text class="sub" x="409" y="130" text-anchor="middle" style="fill:var(--stop)">convidado, inteiro</text>
+    <text class="sub" x="409" y="156" text-anchor="middle" style="fill:var(--stop)">de novo, do zero</text>
+
+    <rect class="box" x="0" y="196" width="540" height="52" rx="8"></rect>
+    <text class="name-s" x="270" y="228" text-anchor="middle">hypervisor</text>
+
+    <rect class="box" x="0" y="260" width="540" height="52" rx="8"></rect>
+    <text class="name-s" x="270" y="292" text-anchor="middle">hardware</text>
+
+    <text class="sub" x="0" y="336">Cada VM carrega um SO próprio. Isolamento forte, custo alto.</text>
+
+    <!-- container -->
+    <text class="zone-l" x="620" y="18" style="fill:var(--ok)">CONTAINER — COMPARTILHA O KERNEL DO HOST</text>
+
+    <rect class="box-k" x="620" y="34" width="170" height="150" rx="8"></rect>
+    <text class="name-s" x="705" y="76" text-anchor="middle">nginx</text>
+    <text class="sub" x="705" y="108" text-anchor="middle">só o processo</text>
+    <text class="sub" x="705" y="130" text-anchor="middle">e o que ele usa</text>
+
+    <rect class="box-k" x="805" y="34" width="170" height="150" rx="8"></rect>
+    <text class="name-s" x="890" y="76" text-anchor="middle">web</text>
+    <text class="sub" x="890" y="108" text-anchor="middle">só o processo</text>
+    <text class="sub" x="890" y="130" text-anchor="middle">e o que ele usa</text>
+
+    <rect class="box-k" x="990" y="34" width="170" height="150" rx="8"></rect>
+    <text class="name-s" x="1075" y="76" text-anchor="middle">db</text>
+    <text class="sub" x="1075" y="108" text-anchor="middle">só o processo</text>
+    <text class="sub" x="1075" y="130" text-anchor="middle">e o que ele usa</text>
+
+    <rect class="box" x="620" y="196" width="540" height="52" rx="8"></rect>
+    <text class="name-s" x="890" y="222" text-anchor="middle">um só sistema operacional, o do host</text>
+    <text class="sub" x="890" y="240" text-anchor="middle">isolamento por namespaces · limites por cgroups</text>
+
+    <rect class="box" x="620" y="260" width="540" height="52" rx="8"></rect>
+    <text class="name-s" x="890" y="292" text-anchor="middle">hardware</text>
+
+    <text class="sub" x="620" y="336">Sem hypervisor: megabytes em vez de gigabytes, segundos em vez de minutos.</text>
+  </svg>
+
+  <div class="callout">
+    <span class="badge">i</span>
+    <span>Daí vêm as outras três ideias do projeto: a <b>imagem</b> é o artefato portátil que roda em qualquer provedor (sem lock-in), o <b>compose</b> é infraestrutura como código versionada no Git, e a aplicação é <b>stateless</b> — estado no banco e no volume, nunca no container.</span>
+  </div>
+
+  <div class="notes-src" hidden>Slide da disciplina (1min30) — é aqui que eu amarro o trabalho ao conteúdo da matéria. A VM virtualiza hardware: o hypervisor entrega CPU, memória e disco virtuais, e cada VM roda um sistema operacional convidado inteiro. O container virtualiza o sistema operacional: os processos usam o kernel do host, isolados por namespaces e limitados por cgroups. Daí vem tudo: sobe em segundos em vez de minutos, ocupa megabytes em vez de gigabytes, e cabem dezenas onde caberiam poucas VMs. O preço é o isolamento mais fraco, porque todos dependem do mesmo kernel, e não dá para rodar um SO diferente do host. Honestidade que vale ponto: no meu Mac o Docker Desktop roda uma VM Linux por baixo, então ali existe um hypervisor; num servidor Linux, que é o destino real, não existe. O callout cobre o resto do conteúdo da matéria: imagem portátil e anti lock-in, compose como IaC, aplicação stateless, e do 12-Factor eu aplico config no ambiente, logs no stdout e descartabilidade. Se perguntarem o modelo de serviço: rodando os containers numa VM que eu administro é IaaS; num serviço gerenciado de containers seria CaaS ou PaaS, e o código não mudaria. Se perguntarem de elasticidade: escala horizontal com --scale web=3 funciona, mas antes o migrate tem que sair do boot e o volume virar object storage.</div>
+</section>
+
+<!-- ====================== 5 · simulador (animado) ====================== -->
+<section class="slide sim" id="slideSim" data-eyebrow="Simulador" data-title="Estado fora dos containers, em movimento" data-time="2:00">
+  <p class="eyebrow">Simulador</p>
+  <h2 class="stitle">Estado fora dos containers, em movimento</h2>
+
+  <svg class="dg" viewBox="0 0 1160 310" role="img" aria-label="simulação: a aplicação grava e lê no volume, o container é destruído e o volume permanece">
+    <!-- navegador -->
+    <g class="el" id="s-nav">
+      <rect class="box" x="4" y="74" width="130" height="70" rx="8"></rect>
+      <text class="name-s" x="69" y="104" text-anchor="middle">navegador</text>
+      <text class="sub" x="69" y="124" text-anchor="middle">:8080</text>
+    </g>
+    <path class="conn el" id="s-c-nav" d="M138 105 H 170"></path>
+
+    <!-- nginx -->
+    <g class="el" id="s-nginx-zone">
+      <rect class="ghost" x="176" y="24" width="206" height="170" rx="10"></rect>
+      <text class="zone-l" x="192" y="46">CONTAINER nginx</text>
+    </g>
+    <g class="el" id="s-nginx">
+      <rect class="box-a" x="192" y="62" width="174" height="76" rx="8"></rect>
+      <text class="name-s" x="279" y="92" text-anchor="middle">nginx</text>
+      <text class="sub" x="279" y="112" text-anchor="middle">proxy reverso</text>
+      <text class="sub" x="279" y="130" text-anchor="middle">não toca em arquivo</text>
+      <text class="sub" x="279" y="172" text-anchor="middle">nenhum volume: não há</text>
+      <text class="sub" x="279" y="186" text-anchor="middle">nada nele para persistir</text>
+    </g>
+    <path class="conn el" id="s-c-proxy" d="M386 105 H 438"></path>
+
+    <!-- container da aplicação -->
+    <g class="el" id="s-zone">
+      <rect class="ghost" x="444" y="24" width="360" height="170" rx="10"></rect>
+      <text class="zone-l" x="462" y="46">CONTAINER web</text>
+    </g>
+    <g class="el" id="s-app">
+      <rect class="box" x="470" y="62" width="200" height="76" rx="8"></rect>
+      <text class="name-s" x="570" y="92" text-anchor="middle">django</text>
+      <text class="sub" x="570" y="112" text-anchor="middle">gunicorn · 3 workers</text>
+      <text class="sub" x="570" y="130" text-anchor="middle">valida, grava e lê</text>
+    </g>
+    <g class="el" id="s-efemera">
+      <rect class="box-s" x="470" y="148" width="148" height="38" rx="6"></rect>
+      <text class="sub" x="544" y="165" text-anchor="middle" style="fill:var(--stop)">camada de escrita</text>
+      <text class="sub" x="544" y="181" text-anchor="middle" style="fill:var(--stop)">some com o container</text>
+    </g>
+
+    <!-- banco: mesma historia do web — container descartavel + volume proprio -->
+    <g class="el" id="s-db-zone">
+      <rect class="ghost" x="838" y="24" width="214" height="170" rx="10"></rect>
+      <text class="zone-l" x="854" y="46">CONTAINER db</text>
+    </g>
+    <g class="el" id="s-db">
+      <rect class="box" x="854" y="62" width="182" height="76" rx="8"></rect>
+      <text class="name-s" x="945" y="92" text-anchor="middle">db</text>
+      <text class="sub" x="945" y="112" text-anchor="middle">postgresql</text>
+      <text class="sub" x="945" y="130" text-anchor="middle">guarda o caminho</text>
+      <text class="sub" x="918" y="172" text-anchor="middle">descartável como o web</text>
+      <text class="sub" x="918" y="188" text-anchor="middle">dados moram no volume</text>
+    </g>
+    <path class="conn el" id="s-c-db" d="M674 96 H 832"></path>
+
+    <!-- o elo que importa: aplicação ↔ volume -->
+    <path class="conn el" id="s-c-vol" d="M642 142 V 210"></path>
+    <text class="lbl-k el" id="s-l-vol" x="654" y="174">MEDIA_ROOT</text>
+
+    <g class="el" id="s-volume">
+      <rect class="box-k" x="444" y="216" width="360" height="86" rx="10"></rect>
+      <text class="zone-l" x="462" y="238" id="s-vol-title" style="fill:var(--ok)">VOLUME media_data — PERMANENTE</text>
+      <text class="name-s" x="624" y="266" text-anchor="middle" id="s-vol-file">uploads/relatorio.pdf</text>
+      <text class="sub" x="624" y="288" text-anchor="middle" id="s-vol-note">fora dos containers, montado só na aplicação</text>
+    </g>
+
+    <path class="conn el" id="s-c-pg" d="M1012 142 V 210"></path>
+    <g class="el" id="s-pg">
+      <rect class="box" x="854" y="216" width="180" height="86" rx="10"></rect>
+      <text class="zone-l" x="866" y="238" style="fill:var(--ok)">postgres_data</text>
+      <text class="name-s" x="944" y="268" text-anchor="middle">tabelas e índices</text>
+      <text class="sub" x="944" y="288" text-anchor="middle">sobrevive ao container</text>
+    </g>
+
+    <circle id="simPacket" r="8" fill="var(--accent)" opacity="0"></circle>
+    <circle id="simPacket2" r="8" fill="var(--ok)" opacity="0"></circle>
+  </svg>
+
+  <div class="sim-bar">
+    <button type="button" id="simPlay" class="sim-go">▶ Tocar</button>
+    <button type="button" id="simPrev">‹</button>
+    <button type="button" id="simNext">›</button>
+    <span class="sim-count" id="simCount">1 / 10</span>
+    <span class="sim-say" id="simSay">—</span>
+  </div>
+
+  <div class="notes-src" hidden>Slide central (2min) — deixar tocar uma vez e ir narrando por cima; os botões controlam, e a tecla P repete. O que precisa ficar: o <b>MEDIA_ROOT do Django é o ponto de montagem do volume</b>, então o arquivo nunca esteve na camada de escrita do container. Por isso o down leva os containers e não leva os arquivos. Se perguntarem por que volume nomeado em vez de bind mount: portabilidade (não depende de caminho do host) e permissão (o volume herda o dono do diretório na imagem). E como o nginx não monta volume, é a própria aplicação que lê o arquivo de volta para servir o download. Se perguntarem do banco: o container do Postgres é tão descartável quanto o do web — o que persiste é o volume postgres_data montado em /var/lib/postgresql/data. O nginx é o único sem volume, porque não há nada nele que precise sobreviver. Este slide é o plano B se a demo ao vivo falhar.</div>
+</section>
+
+<!-- ============================= 6 · upload ============================= -->
+<section class="slide" data-eyebrow="Upload" data-title="O caminho de um arquivo enviado" data-time="1:30">
+  <p class="eyebrow">Upload</p>
+  <h2 class="stitle">O caminho de um arquivo enviado</h2>
+  <p class="deck">Sem sessão não há upload. E o nginx só repassa: toda decisão acontece dentro do container da aplicação.</p>
+
+  <svg class="dg" viewBox="0 0 1160 336" role="img" aria-label="fluxo do upload: navegador, nginx como proxy, e dentro do container da aplicação a validação e a gravação, com os bytes indo para o volume e o caminho para o banco">
+    <!-- navegador -->
+    <rect class="box" x="2" y="62" width="142" height="66" rx="8"></rect>
+    <text class="name-s" x="73" y="90" text-anchor="middle">navegador</text>
+    <text class="sub" x="73" y="110" text-anchor="middle">POST multipart</text>
+    <text class="lbl-k" x="2" y="22">sessão conferida</text>
+    <text class="lbl-k" x="2" y="42">por login_required</text>
+
+    <path class="edge" d="M152 95 H 194"></path>
+
+    <!-- nginx: proxy e so -->
+    <rect class="box-a" x="202" y="56" width="158" height="78" rx="8"></rect>
+    <text class="name-s" x="281" y="84" text-anchor="middle">nginx</text>
+    <text class="sub" x="281" y="104" text-anchor="middle">proxy reverso</text>
+    <text class="sub" x="281" y="122" text-anchor="middle">corta acima de 100M</text>
+    <text class="lbl" x="281" y="152" text-anchor="middle">não abre, não guarda, não lê</text>
+
+    <path class="edge" d="M368 95 H 410"></path>
+    <text class="lbl" x="389" y="84" text-anchor="middle">:8000</text>
+
+    <!-- container da aplicacao: a validacao e a gravacao acontecem aqui dentro -->
+    <rect class="ghost" x="416" y="16" width="474" height="176" rx="10"></rect>
+    <text class="zone-l" x="434" y="38">CONTAINER web — DJANGO</text>
+
+    <rect class="box-w" x="436" y="54" width="184" height="82" rx="8"></rect>
+    <text class="name-s" x="528" y="82" text-anchor="middle">validação</text>
+    <text class="sub" x="528" y="102" text-anchor="middle">extensão e tamanho,</text>
+    <text class="sub" x="528" y="120" text-anchor="middle">nos validadores do model</text>
+
+    <path class="edge-k" d="M628 95 H 668"></path>
+    <text class="lbl-k" x="648" y="84" text-anchor="middle">ok</text>
+
+    <rect class="box-a" x="676" y="54" width="196" height="82" rx="8"></rect>
+    <text class="name-s" x="774" y="82" text-anchor="middle">FileField</text>
+    <text class="sub" x="774" y="102" text-anchor="middle">aqui o caminho</text>
+    <text class="sub" x="774" y="120" text-anchor="middle">se divide em dois</text>
+
+    <!-- reprovou -->
+    <path class="edge-s" d="M528 142 V 212"></path>
+    <rect class="box-s" x="378" y="218" width="300" height="58" rx="8"></rect>
+    <text class="name-s" x="528" y="243" text-anchor="middle" style="fill:var(--stop)">reprovou</text>
+    <text class="sub" x="528" y="263" text-anchor="middle" style="fill:var(--stop)">nada é gravado · erro volta no formulário</text>
+
+    <!-- bifurcacao: bytes x caminho -->
+    <path class="edge-k" d="M880 78 H 916 V 48 H 962"></path>
+    <path class="edge-a" d="M880 112 H 916 V 172 H 962"></path>
+    <text class="lbl-k" x="910" y="42" text-anchor="end">bytes</text>
+    <text class="lbl-a" x="910" y="198" text-anchor="end">caminho</text>
+
+    <rect class="box-k" x="970" y="18" width="188" height="62" rx="8"></rect>
+    <text class="name-s" x="1064" y="44" text-anchor="middle">volume media_data</text>
+    <text class="sub" x="1064" y="64" text-anchor="middle">os bytes, em /vol/media</text>
+
+    <rect class="box-a" x="970" y="142" width="188" height="62" rx="8"></rect>
+    <text class="name-s" x="1064" y="168" text-anchor="middle">banco</text>
+    <text class="sub" x="1064" y="188" text-anchor="middle">só o caminho, em VARCHAR</text>
+
+    <!-- volta do download: volume → app → nginx → navegador -->
+    <path class="edge" d="M1064 210 V 300 H 73 V 134"></path>
+    <text class="lbl" x="700" y="326" text-anchor="middle">no download é o mesmo caminho de volta: a aplicação lê o arquivo do volume e o nginx apenas repassa a resposta</text>
+  </svg>
+
+  <div class="callout">
+    <span class="badge">i</span>
+    <span><b>Três números diferentes:</b> <code>100M</code> é o perímetro do nginx; <code>10 MB</code> é a regra da aplicação, com mensagem ao usuário; e <code>5 MB</code> <b>não é limite</b> — é onde o Django passa de memória para arquivo temporário em disco.</span>
+  </div>
+
+  <div class="notes-src" hidden>Slide de fluxo (1min30). Começa pela sessão: a home e a entrega de /media/ estão sob login_required, então quem não entrou é mandado para /accounts/login/ — e o upload nem chega a ser tentado. Depois disso: o nginx aparece uma vez só, na entrada, e não toma decisão nenhuma — ele nem abre o corpo da requisição, só verifica o tamanho e repassa. Tudo que é decisão está dentro da fronteira tracejada do container web. Dois pontos de ênfase. Primeiro, a validação está nos validadores do MODEL, não do formulário: assim ela vale para qualquer caminho de escrita — a home, o admin, e qualquer código que chame full_clean(). Se estivesse só no form, um upload pelo admin passaria direto. Segundo, o FileField não guarda o arquivo no banco: guarda uma string com o caminho relativo a MEDIA_ROOT, então o banco não cresce com o tamanho dos uploads e arquivo e metadado escalam separados. Se perguntarem do accept no input: é conveniência do navegador, não vale como segurança — quem decide é o servidor. Sobre os três números: confundi-los é o erro comum; e os dois timeouts de 120s no nginx e no gunicorn são iguais de propósito, senão o cliente levaria 504 com o worker ainda trabalhando.</div>
+</section>
+
+<!-- ============================ 7 · banco ============================ -->
+<section class="slide" data-eyebrow="Banco de dados" data-title="Uma tabela, e o que ela guarda" data-time="1:00">
+  <p class="eyebrow">Banco de dados</p>
+  <h2 class="stitle">Uma tabela, e o que ela guarda</h2>
+  <p class="deck">O arquivo não entra no banco: a tabela guarda o título, a data, <b>o caminho</b> e quem enviou.</p>
+
+  <svg class="dg" viewBox="0 0 1160 300" role="img" aria-label="diagrama da tabela core_documento com suas cinco colunas, e uma linha real do banco">
+    <!-- tabela -->
+    <rect class="box" x="4" y="14" width="600" height="278" rx="10"></rect>
+    <rect class="box-a" x="4" y="14" width="600" height="52" rx="10"></rect>
+    <rect x="5" y="44" width="598" height="22" fill="var(--accent-bg)" stroke="none"></rect>
+    <line x1="4" y1="66" x2="604" y2="66" stroke="var(--accent)" stroke-width="1.5"></line>
+    <text class="name" x="26" y="48">core_documento</text>
+    <text class="sub" x="584" y="48" text-anchor="end">a única tabela que eu criei</text>
+
+    <!-- cabecalho das colunas -->
+    <text class="zone-l" x="26" y="82">COLUNA</text>
+    <text class="zone-l" x="250" y="82">TIPO</text>
+    <text class="zone-l" x="430" y="82">O QUE É</text>
+    <line x1="20" y1="92" x2="588" y2="92" stroke="var(--line-soft)" stroke-width="1"></line>
+
+    <text class="code-l" x="26" y="118">id</text>
+    <text class="sub" x="250" y="118">bigint</text>
+    <text class="sub" x="430" y="118">chave primária, gerada</text>
+    <rect class="box-k" x="196" y="104" width="34" height="18" rx="4"></rect>
+    <text class="lbl-k" x="213" y="117" text-anchor="middle">PK</text>
+    <line x1="20" y1="132" x2="588" y2="132" stroke="var(--line-soft)" stroke-width="1"></line>
+
+    <text class="code-l" x="26" y="158">titulo</text>
+    <text class="sub" x="250" y="158">varchar(200)</text>
+    <text class="sub" x="430" y="158">o que a pessoa digitou</text>
+    <line x1="20" y1="172" x2="588" y2="172" stroke="var(--line-soft)" stroke-width="1"></line>
+
+    <rect class="box-k" x="18" y="178" width="570" height="46" rx="6"></rect>
+    <text class="code-l" x="26" y="208" style="font-weight:700">arquivo</text>
+    <text class="sub" x="250" y="202">varchar(100)</text>
+    <text class="sub" x="250" y="218" style="fill:var(--ok)">não é binário: é texto</text>
+    <text class="sub" x="430" y="202">o caminho relativo a</text>
+    <text class="sub" x="430" y="218">MEDIA_ROOT</text>
+
+    <text class="code-l" x="26" y="248">enviado_em</text>
+    <text class="sub" x="250" y="248">timestamptz</text>
+    <text class="sub" x="430" y="248">preenchida pelo Django</text>
+    <line x1="20" y1="258" x2="588" y2="258" stroke="var(--line-soft)" stroke-width="1"></line>
+
+    <text class="code-l" x="26" y="278">enviado_por_id</text>
+    <text class="sub" x="250" y="278">integer</text>
+    <text class="sub" x="430" y="278">quem enviou</text>
+    <rect class="box-a" x="196" y="264" width="38" height="18" rx="4"></rect>
+    <text class="lbl-a" x="215" y="277" text-anchor="middle">FK</text>
+
+    <!-- linha real -->
+    <rect class="box" x="628" y="14" width="528" height="172" rx="10"></rect>
+    <text class="zone-l" x="650" y="40">UMA LINHA DE VERDADE, DO BANCO QUE ESTÁ NO AR</text>
+    <text class="code-l" x="650" y="70">id          3</text>
+    <text class="code-l" x="650" y="92">titulo      Prova sem nginx</text>
+    <text class="code-l" x="650" y="114" style="font-weight:700">arquivo     uploads/prova.txt</text>
+    <text class="code-l" x="650" y="136">enviado_em  2026-09-25 21:02:25+00</text>
+    <text class="code-l" x="650" y="156">enviado_por 1  →  auth_user</text>
+    <text class="sub" x="650" y="176">17 caracteres na coluna do arquivo — os bytes estão no volume</text>
+
+    <!-- as outras tabelas -->
+    <rect class="box" x="628" y="196" width="528" height="96" rx="10"></rect>
+    <text class="zone-l" x="650" y="220">AS OUTRAS 10 TABELAS SÃO DO PRÓPRIO DJANGO</text>
+    <text class="sub" x="650" y="244">auth_user · auth_group · auth_permission · django_session</text>
+    <text class="sub" x="650" y="264">django_admin_log · django_content_type · django_migrations …</text>
+    <text class="sub" x="650" y="284">Vêm das migrações do admin e da autenticação — eu não escrevi nenhuma delas.</text>
+  </svg>
+
+  <div class="callout">
+    <span class="badge">i</span>
+    <span>A tabela inteira ocupa <b>24 kB</b> com três registros. Se os arquivos estivessem dentro dela, cada upload de 8 MB entraria aí — e o <code>pg_dump</code> teria que carregar tudo isso a cada backup.</span>
+  </div>
+
+  <div class="notes-src" hidden>Slide de transparência (1min). Mostro o schema real, lido com \\d core_documento no container do banco — não é desenho de enfeite. O ponto central é a coluna arquivo: varchar(100), texto, guardando o caminho relativo a MEDIA_ROOT. O enviado_por_id é chave estrangeira para auth_user — é o que liga o documento a quem fez o upload, agora que enviar exige login; é SET_NULL, então apagar um usuário não leva o documento junto. Se perguntarem por que 100: é o default do FileField do Django, e dá para aumentar com max_length. Se perguntarem por que não guardar o binário: infla o dump, deixa o restore lento, prende o arquivo ao ciclo de vida do banco e impede servir o arquivo sem passar pelo banco. As outras 10 tabelas são do Django — auth, sessões, admin, content types e o controle de migrações; vale dizer isso antes que perguntem, porque mostra que eu sei o que o framework criou por mim. O enviado_em usa auto_now_add e é timestamptz porque USE_TZ está ligado: o banco guarda em UTC e o Django converte para America/Sao_Paulo na hora de exibir.</div>
+</section>
+
+<!-- =========================== 8 · arquivos =========================== -->
+<section class="slide" data-eyebrow="Arquivos" data-title="Onde o arquivo realmente fica" data-time="1:00">
+  <p class="eyebrow">Arquivos</p>
+  <h2 class="stitle">Onde o arquivo realmente fica</h2>
+  <p class="deck">O caminho é montado em três pedaços, e só o pedaço do meio para a direita é que vai para o banco.</p>
+
+  <svg class="dg" viewBox="0 0 1160 300" role="img" aria-label="composição do caminho do arquivo, o que vai para o banco, a URL pública e a listagem no volume">
+    <!-- os tres pedacos -->
+    <rect class="box" x="4" y="16" width="300" height="80" rx="8"></rect>
+    <text class="zone-l" x="22" y="40">settings.py</text>
+    <text class="code-l" x="22" y="64">MEDIA_ROOT = /vol/media</text>
+    <text class="sub" x="22" y="84">onde o volume está montado</text>
+
+    <text class="name" x="318" y="62" text-anchor="middle">+</text>
+
+    <rect class="box" x="334" y="16" width="270" height="80" rx="8"></rect>
+    <text class="zone-l" x="352" y="40">core/models.py</text>
+    <text class="code-l" x="352" y="64">upload_to → uploads/</text>
+    <text class="sub" x="352" y="84">subpasta escolhida no model</text>
+
+    <text class="name" x="618" y="62" text-anchor="middle">+</text>
+
+    <rect class="box" x="634" y="16" width="290" height="80" rx="8"></rect>
+    <text class="zone-l" x="652" y="40">do próprio upload</text>
+    <text class="code-l" x="652" y="64">prova.txt</text>
+    <text class="sub" x="652" y="84">com sufixo aleatório, se colidir</text>
+
+    <path class="edge" d="M932 56 H 972"></path>
+
+    <rect class="box-k" x="980" y="16" width="176" height="80" rx="8"></rect>
+    <text class="zone-l" x="998" y="40" style="fill:var(--ok)">NO DISCO</text>
+    <text class="code-l" x="998" y="62">/vol/media/</text>
+    <text class="code-l" x="998" y="80">uploads/prova.txt</text>
+
+    <!-- o que cada lado leva -->
+    <path class="edge-a" d="M1068 100 V 132 H 300 V 158"></path>
+    <path class="edge-k" d="M1068 100 V 132 H 860 V 158"></path>
+
+    <rect class="box-a" x="4" y="164" width="592" height="60" rx="8"></rect>
+    <text class="name-s" x="26" y="190">o banco guarda só o pedaço relativo</text>
+    <text class="code-l" x="26" y="212">arquivo = 'uploads/prova.txt'   ← varchar(100)</text>
+
+    <rect class="box-k" x="620" y="164" width="536" height="60" rx="8"></rect>
+    <text class="name-s" x="642" y="190">a URL pública repete o mesmo pedaço</text>
+    <text class="code-l" x="642" y="212">/media/uploads/prova.txt   ← servida pela aplicação</text>
+
+    <!-- listagem real -->
+    <rect class="box" x="4" y="238" width="1152" height="58" rx="8"></rect>
+    <text class="zone-l" x="26" y="260">DENTRO DO VOLUME, AGORA</text>
+    <text class="code-l" x="300" y="260">$ docker compose exec web ls -l /vol/media/uploads</text>
+    <text class="code-l" x="26" y="284">-rw-r--r--  1 appuser appuser   23  prova.txt</text>
+    <text class="sub" x="470" y="284">dono é o appuser, não o root — o volume herdou a permissão do diretório na imagem</text>
+  </svg>
+
+  <div class="plain">
+    <span class="tagline">Em miúdos</span>
+    <span>O banco guarda o <b>endereço</b>, o volume guarda a <b>caixa</b> — e o endereço é o mesmo texto que aparece na URL. Se dois arquivos tiverem o mesmo nome, o storage do Django acrescenta um sufixo aleatório e <b>nada é sobrescrito</b>: tem teste cobrindo isso.</span>
+  </div>
+
+  <div class="notes-src" hidden>Slide de transparência (1min). Mostro que o caminho não é mágica: é MEDIA_ROOT, que é o ponto de montagem do volume, mais o upload_to do model, mais o nome do arquivo. O banco guarda só do upload_to para a frente — o caminho relativo — e é por isso que mudar o MEDIA_ROOT não invalida os registros. A URL pública repete esse mesmo trecho relativo. Sobre a listagem: o dono ser appuser e não root é consequência do chown feito no Dockerfile antes de o volume existir; se perguntarem, é o mesmo ponto do slide de decisões. Sobre colisão de nomes: quem resolve é o storage do Django, que acrescenta um sufixo aleatório — existe um teste chamado test_arquivos_de_mesmo_nome_nao_se_sobrescrevem. Se perguntarem se dá para o usuário escolher o caminho e escapar da pasta: não, porque o upload_to fixa a subpasta e o Django limpa o nome do arquivo recebido.</div>
+</section>
+
+<!-- =========================== 9 · validação =========================== -->
+<section class="slide" data-eyebrow="Validação" data-title="O que é recusado, e em que camada" data-time="1:30">
+  <p class="eyebrow">Validação</p>
+  <h2 class="stitle">O que é recusado, e em que camada</h2>
+
+  <svg class="dg" viewBox="0 0 1160 330" role="img" aria-label="as camadas de validação que um upload atravessa e o que cada uma recusa">
+    <!-- trilho -->
+    <line x1="60" y1="58" x2="1100" y2="58" stroke="var(--line)" stroke-width="3"></line>
+
+    <!-- 1 nginx -->
+    <circle cx="60" cy="58" r="20" fill="var(--surface)"></circle><circle cx="60" cy="58" r="20" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="2"></circle>
+    <text class="code-l" x="60" y="64" text-anchor="middle">1</text>
+    <text class="name-s" x="10" y="104">sessão</text>
+    <text class="sub" x="10" y="128">quem não entrou</text>
+    <text class="sub" x="10" y="148">vai para o login</text>
+
+    <!-- 2 nome -->
+    <circle cx="320" cy="58" r="20" fill="var(--surface)"></circle><circle cx="320" cy="58" r="20" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="2"></circle>
+    <text class="code-l" x="320" y="64" text-anchor="middle">2</text>
+    <text class="name-s" x="270" y="104">nginx e nome</text>
+    <text class="sub" x="270" y="128">corpo acima de 100M; caminho,</text>
+    <text class="sub" x="270" y="148">quebra de linha, invisível</text>
+
+    <!-- 3 extensão e tamanho -->
+    <circle cx="580" cy="58" r="20" fill="var(--surface)"></circle><circle cx="580" cy="58" r="20" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="2"></circle>
+    <text class="code-l" x="580" y="64" text-anchor="middle">3</text>
+    <text class="name-s" x="530" y="104">extensão e tamanho</text>
+    <text class="sub" x="530" y="128">lista do .env,</text>
+    <text class="sub" x="530" y="148">teto de 10 MB</text>
+
+    <!-- 4 conteúdo -->
+    <circle cx="840" cy="58" r="20" fill="var(--surface)"></circle><circle cx="840" cy="58" r="20" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="2"></circle>
+    <text class="code-l" x="840" y="64" text-anchor="middle">4</text>
+    <text class="name-s" x="790" y="104">conteúdo</text>
+    <text class="sub" x="790" y="128">primeiros bytes contra</text>
+    <text class="sub" x="790" y="148">o que a extensão promete</text>
+
+    <!-- 5 gravado -->
+    <circle cx="1100" cy="58" r="24" fill="var(--surface)"></circle><circle cx="1100" cy="58" r="24" fill="var(--ok-bg)" stroke="var(--ok)" stroke-width="3"></circle>
+    <text class="code-l" x="1100" y="65" text-anchor="middle" style="fill:var(--ok);font-weight:700">✓</text>
+    <text class="name-s" x="1150" y="104" text-anchor="end" style="fill:var(--ok)">gravado</text>
+    <text class="sub" x="1150" y="128" text-anchor="end">só aqui o arquivo</text>
+    <text class="sub" x="1150" y="148" text-anchor="end">toca o volume</text>
+
+    <!-- o exemplo que ninguem esquece -->
+    <rect class="box-s" x="0" y="182" width="700" height="66" rx="8"></rect>
+    <text class="name-s" x="22" y="210" style="fill:var(--stop)">Um executável renomeado para relatorio.pdf</text>
+    <text class="sub" x="22" y="234" style="fill:var(--stop)">passa pela camada 3 e morre na 4: começa com MZ, e todo PDF começa com %PDF-</text>
+
+    <!-- na saida -->
+    <rect class="box-k" x="724" y="182" width="436" height="66" rx="8"></rect>
+    <text class="name-s" x="746" y="210" style="fill:var(--ok)">E na saída, quando o arquivo volta</text>
+    <text class="sub" x="746" y="234">Content-Disposition: attachment · nosniff · CSP</text>
+
+    <text class="sub" x="0" y="286">O título passa pela mesma régua: sem caractere de controle. E o ORM parametriza toda consulta,</text>
+    <text class="sub" x="0" y="310">então um título com <tspan style="font-family:var(--mono)">'); DROP TABLE</tspan> é gravado como texto, não executado — tem teste provando.</text>
+  </svg>
+
+  <div class="callout">
+    <span class="badge">i</span>
+    <span><b>41 testes</b> cobrem essas camadas: anônimo barrado na home e no download, path traversal na URL, imagem que abre e PDF que baixa, e os cabeçalhos da resposta. <code>manage.py test core</code></span>
+  </div>
+
+  <div class="notes-src" hidden>Slide de segurança (1min30). A ideia é defesa em profundidade: a primeira camada é a sessão — home e /media/ estão sob login_required, então quem não entrou não envia nem baixa nada. Depois disso, cada camada é barata e recusa antes de a próxima gastar trabalho — o conteúdo só é lido se nome, extensão e tamanho passaram. O exemplo do executável renomeado é o que fixa a ideia: extensão é só o sobrenome do arquivo, e a assinatura é a identidade. Sobre a saída: servir conteúdo de usuário no mesmo domínio é o ponto mais delicado do projeto, então tudo baixa em vez de abrir, menos imagem rasterizada; o tipo vem de uma tabela fixa, nunca de adivinhação; e o nosniff impede o navegador de ignorar esse tipo. A CSP fecha o resto. Se perguntarem de prompt injection: não se aplica, porque não existe LLM nenhum no fluxo — nada aqui lê o conteúdo do arquivo para alimentar um modelo. Se um dia houver, a defesa seria tratar o conteúdo extraído como dado não confiável, nunca como instrução. Se perguntarem de SQL injection: o ORM do Django parametriza; o único SQL escrito à mão é o SELECT 1 do healthz, que é constante e não recebe entrada.</div>
+</section>
+
+<!-- ============================== 10 · demo ============================== -->
+<section class="slide" data-eyebrow="Demonstração" data-title="Roteiro da demo ao vivo" data-time="3:00">
+  <p class="eyebrow">Demonstração</p>
+  <h2 class="stitle">Roteiro da demo ao vivo</h2>
+
+  <svg class="dg" viewBox="0 0 1160 180" role="img" aria-label="os seis passos da demo em sequência, com o sexto marcado como o que prova o requisito">
+    <line x1="90" y1="44" x2="1070" y2="44" stroke="var(--line)" stroke-width="3"></line>
+    <line x1="874" y1="44" x2="1070" y2="44" stroke="var(--ok)" stroke-width="3"></line>
+
+    <circle cx="90" cy="44" r="21" fill="var(--surface)"></circle><circle cx="90" cy="44" r="21" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
+    <text class="code-l" x="90" y="50" text-anchor="middle">1</text>
+    <text class="name-s" x="90" y="92" text-anchor="middle">Subir e entrar</text>
+    <text class="sub" x="90" y="116" text-anchor="middle">a stack no ar,</text>
+    <text class="sub" x="90" y="136" text-anchor="middle">e o login feito</text>
+
+    <circle cx="286" cy="44" r="21" fill="var(--surface)"></circle><circle cx="286" cy="44" r="21" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
+    <text class="code-l" x="286" y="50" text-anchor="middle">2</text>
+    <text class="name-s" x="286" y="92" text-anchor="middle">Conferir os três</text>
+    <text class="sub" x="286" y="116" text-anchor="middle">db marcado</text>
+    <text class="sub" x="286" y="136" text-anchor="middle">como healthy</text>
+
+    <circle cx="482" cy="44" r="21" fill="var(--surface)"></circle><circle cx="482" cy="44" r="21" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
+    <text class="code-l" x="482" y="50" text-anchor="middle">3</text>
+    <text class="name-s" x="482" y="92" text-anchor="middle">Checar o banco</text>
+    <text class="sub" x="482" y="116" text-anchor="middle">a view roda</text>
+    <text class="sub" x="482" y="136" text-anchor="middle">SELECT 1</text>
+
+    <circle cx="678" cy="44" r="21" fill="var(--surface)"></circle><circle cx="678" cy="44" r="21" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="2"></circle>
+    <text class="code-l" x="678" y="50" text-anchor="middle">4</text>
+    <text class="name-s" x="678" y="92" text-anchor="middle">Enviar arquivo</text>
+    <text class="sub" x="678" y="116" text-anchor="middle">um .exe barrado,</text>
+    <text class="sub" x="678" y="136" text-anchor="middle">depois um PDF</text>
+
+    <circle cx="874" cy="44" r="21" fill="var(--surface)"></circle><circle cx="874" cy="44" r="21" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2"></circle>
+    <text class="code-l" x="874" y="50" text-anchor="middle">5</text>
+    <text class="name-s" x="874" y="92" text-anchor="middle">Ver no volume</text>
+    <text class="sub" x="874" y="116" text-anchor="middle">gravado pelo</text>
+    <text class="sub" x="874" y="136" text-anchor="middle">appuser</text>
+
+    <circle cx="1070" cy="44" r="27" fill="var(--surface)"></circle><circle cx="1070" cy="44" r="27" fill="var(--ok-bg)" stroke="var(--ok)" stroke-width="3"></circle>
+    <text class="code-l" x="1070" y="51" text-anchor="middle" style="fill:var(--ok);font-weight:700">6</text>
+    <text class="name-s" x="1070" y="92" text-anchor="middle" style="fill:var(--ok)">Destruir e voltar</text>
+    <text class="sub" x="1070" y="116" text-anchor="middle" style="fill:var(--ok)">containers novos,</text>
+    <text class="sub" x="1070" y="136" text-anchor="middle" style="fill:var(--ok)">arquivo intacto</text>
+
+    <text class="lbl-k" x="1158" y="170" text-anchor="end">é aqui que o requisito fica provado</text>
+  </svg>
+
+  <div class="code"><span class="pr">$</span> docker compose up --build -d          <span class="cm"># 1 — e entrar em /accounts/login/</span>
+<span class="pr">$</span> docker compose ps                     <span class="cm"># 2 — db healthy</span>
+<span class="pr">$</span> curl localhost:8080/healthz/          <span class="cm"># 3 — {"status": "ok"}</span>
+<span class="cm">                                        # 4 — no navegador, em localhost:8080</span>
+<span class="pr">$</span> docker compose exec web ls -l /vol/media/uploads   <span class="cm"># 5</span>
+<span class="pr">$</span> docker compose down <span class="ok">&amp;&amp;</span> docker compose up -d           <span class="cm"># 6</span></div>
+
+  <div class="callout warn">
+    <span class="badge warn">!</span>
+    <span><b>Plano B:</b> se o Docker não colaborar, voltar ao slide 5 — tem o mesmo teste em texto. Não debugar ao vivo.</span>
+  </div>
+
+  <div class="notes-src" hidden>Slide de demo (3 a 4min de execução). Regras: (1) subir a stack ANTES da apresentação começar, para não gastar o tempo da banca esperando build; (2) já estar logada antes de começar — ou mostrar o login de propósito, que é rápido e prova o controle de acesso; (3) ter um arquivo pequeno de teste já escolhido na área de trabalho, e um .exe para mostrar a validação; (3) o passo 6 é o clímax — é onde o requisito principal fica provado, e por isso está destacado no desenho. Se o Docker falhar, pular para o slide 5, que tem o mesmo teste em texto. Frase pronta: “o ambiente não está colaborando agora; o comportamento é este aqui, e o repositório sobe com um comando só.”</div>
+</section>
+
+<!-- ========================== 11 · fechamento ========================== -->
+<section class="slide" data-eyebrow="Fechamento" data-title="O que ficou de fora, e por quê" data-time="1:15">
+  <p class="eyebrow">Honestidade técnica</p>
+  <h2 class="stitle">O que ficou de fora, e por quê</h2>
+
+  <svg class="dg" viewBox="0 0 1160 308" role="img" aria-label="cada limite do que foi entregue, com o caminho já mapeado para resolvê-lo">
+    <text class="zone-l" x="0" y="16" style="fill:var(--warn)">LIMITE DO QUE ENTREGUEI</text>
+    <text class="zone-l" x="620" y="16" style="fill:var(--ok)">O CAMINHO PARA RESOLVER</text>
+
+    <rect class="box-w" x="0" y="28" width="520" height="56" rx="8"></rect>
+    <text class="sub" x="20" y="54">Confiro assinatura dos primeiros bytes,</text>
+    <text class="sub" x="20" y="74">mas não valido o arquivo inteiro</text>
+    <path class="edge" d="M530 56 H 600"></path>
+    <rect class="box-k" x="620" y="28" width="540" height="56" rx="8"></rect>
+    <text class="sub" x="640" y="54">Uma biblioteca dedicada (python-magic)</text>
+    <text class="sub" x="640" y="74">cobre mais formatos que a minha tabela</text>
+
+    <rect class="box-w" x="0" y="96" width="520" height="56" rx="8"></rect>
+    <text class="sub" x="20" y="122">A CSP fica de fora do /admin/,</text>
+    <text class="sub" x="20" y="142">que usa script e estilo embutidos</text>
+    <path class="edge" d="M530 124 H 600"></path>
+    <rect class="box-k" x="620" y="96" width="540" height="56" rx="8"></rect>
+    <text class="sub" x="640" y="122">Adaptar os templates do admin, ou</text>
+    <text class="sub" x="640" y="142">uma política própria só para ele</text>
+
+    <rect class="box-w" x="0" y="164" width="520" height="56" rx="8"></rect>
+    <text class="sub" x="20" y="190">Tráfego em HTTP puro,</text>
+    <text class="sub" x="20" y="210">sem TLS configurado</text>
+    <path class="edge" d="M530 192 H 600"></path>
+    <rect class="box-k" x="620" y="164" width="540" height="56" rx="8"></rect>
+    <text class="sub" x="640" y="190">TLS no nginx, com redirecionamento</text>
+    <text class="sub" x="640" y="210">de HTTP para HTTPS</text>
+
+    <rect class="box-w" x="0" y="232" width="520" height="56" rx="8"></rect>
+    <text class="sub" x="20" y="258">Volume local: preso a um host,</text>
+    <text class="sub" x="20" y="278">não serve a vários nós</text>
+    <path class="edge" d="M530 260 H 600"></path>
+    <rect class="box-k" x="620" y="232" width="540" height="56" rx="8"></rect>
+    <text class="sub" x="640" y="258">Object storage (S3 ou MinIO), e o</text>
+    <text class="sub" x="640" y="278">migrate como job separado do boot</text>
+
+    <text class="sub" x="580" y="304" text-anchor="middle">Nenhum deles muda a infraestrutura que o trabalho pediu — são camadas acima dela.</text>
+  </svg>
+
+  <div class="cols c-3-2">
+    <div class="plain" style="align-self:center">
+      <span class="tagline">Em miúdos</span>
+      <span>Agora eu confiro o <b>sobrenome</b> e a <b>identidade</b> do arquivo.</span>
+    </div>
+    <div class="card">
+      <p class="author" style="margin:0">Geisbelly Victória</p>
+      <p class="mono small">github.com/Geisbelly/django-docker-upload</p>
+    </div>
+  </div>
+
+  <div class="notes-src" hidden>Slide de fechamento técnico (1min15). Esse slide é estratégia: eu listo as fraquezas antes da banca listar, e cada uma já vem com o caminho ao lado. A primeira: eu confiro a assinatura dos primeiros bytes, o que pega executável renomeado, mas não valido o arquivo inteiro — um PDF com assinatura correta e conteúdo malicioso passaria; uma biblioteca dedicada cobriria mais formatos. A segunda: a CSP não se aplica ao /admin/, porque os templates dele usam script e estilo embutidos e a política o quebraria; como o admin exige login, o risco é menor, mas é uma exceção consciente. Fecho recapitulando os quatro requisitos em uma frase cada.</div>
+</section>
+
+</div>
+</main>
+
+<aside class="notes" id="notes" hidden>
+  <h4 id="notesHead">Notas · slide 1</h4>
+  <div id="notesBody"></div>
+</aside>
+
+<div class="overview" id="overview" hidden>
+  <div class="ov-grid" id="ovGrid"></div>
+</div>
+
+<div class="help" id="help" hidden>
+  <div class="help-box">
+    <h4>Atalhos</h4>
+    <dl>
+      <dt>→ &nbsp;espaço</dt><dd>próximo slide</dd>
+      <dt>←</dt><dd>slide anterior</dd>
+      <dt>Home / End</dt><dd>primeiro / último</dd>
+      <dt>1 … 9</dt><dd>ir para o slide</dd>
+      <dt>N</dt><dd>notas do apresentador</dd>
+      <dt>O</dt><dd>índice dos slides</dd>
+      <dt>P</dt><dd>simulador: tocar/pausar</dd>
+      <dt>, &nbsp;.</dt><dd>simulador: passo a passo</dd>
+      <dt>T</dt><dd>cronômetro (alvo: 15 min)</dd>
+      <dt>F</dt><dd>tela cheia</dd>
+      <dt>Esc</dt><dd>fecha painéis</dd>
+    </dl>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var slides  = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+  var scaler  = document.getElementById("scaler");
+  var stage   = document.getElementById("stage");
+  var current = 0;
+
+  /* ---------------------------- escala do palco --------------------------- */
+
+  function readingMode() {
+    return window.matchMedia("(max-width: 860px), (max-height: 460px)").matches;
+  }
+
+  function fit() {
+    if (readingMode()) { scaler.style.transform = ""; return; }
+    var pad = 48;
+    var w = (stage.clientWidth  - pad) / 1280;
+    var h = (stage.clientHeight - pad) / 720;
+    scaler.style.transform = "scale(" + Math.min(w, h, 1.35) + ")";
+  }
+
+  /* ------------------------------- navegação ------------------------------ */
+
+  function show(i) {
+    current = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach(function (s, n) { s.classList.toggle("is-active", n === current); });
+
+    var s = slides[current];
+    document.getElementById("hudNum").textContent = (current + 1) + " / " + slides.length;
+    document.getElementById("hudTitle").textContent = s.dataset.title || "";
+    document.getElementById("progress").style.width =
+      ((current + 1) / slides.length * 100) + "%";
+
+    var src = s.querySelector(".notes-src");
+    document.getElementById("notesHead").textContent =
+      "Notas · slide " + (current + 1) + " · alvo " + (s.dataset.time || "—");
+    document.getElementById("notesBody").innerHTML =
+      "<p>" + (src ? src.innerHTML : "Sem notas.") + "</p>";
+
+    Array.prototype.forEach.call(document.querySelectorAll(".ov-item"), function (b, n) {
+      b.setAttribute("aria-current", n === current ? "true" : "false");
+    });
+
+    if (s.id === "slideSim") sim.enter(); else if (sim.ativo()) sim.leave();
+
+    if (history.replaceState) history.replaceState(null, "", "#s" + (current + 1));
+    if (readingMode()) s.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function go(delta) { show(current + delta); }
+
+  /* -------------------------------- painéis ------------------------------- */
+
+  function panel(el, btn, on) {
+    el.hidden = !on;
+    if (btn) btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
+  var notesEl = document.getElementById("notes");
+  var ovEl    = document.getElementById("overview");
+  var helpEl  = document.getElementById("help");
+  var btnNotes = document.getElementById("btnNotes");
+  var btnOv    = document.getElementById("btnOv");
+
+  btnNotes.addEventListener("click", function () { panel(notesEl, btnNotes, notesEl.hidden); });
+  btnOv.addEventListener("click", function () { panel(ovEl, btnOv, ovEl.hidden); });
+  document.getElementById("btnHelp").addEventListener("click", function () { panel(helpEl, null, helpEl.hidden); });
+  helpEl.addEventListener("click", function () { panel(helpEl, null, false); });
+
+  /* --------------------------------- índice ------------------------------- */
+
+  var grid = document.getElementById("ovGrid");
+  slides.forEach(function (s, n) {
+    var b = document.createElement("button");
+    b.className = "ov-item";
+    b.type = "button";
+    b.innerHTML =
+      '<span class="ov-n"><span>' + String(n + 1).padStart(2, "0") + "</span><span>" +
+      (s.dataset.time || "") + '</span></span>' +
+      '<span class="ov-e">' + (s.dataset.eyebrow || "") + "</span>" +
+      '<span class="ov-t">' + (s.dataset.title || "") + "</span>";
+    b.addEventListener("click", function () { show(n); panel(ovEl, btnOv, false); });
+    grid.appendChild(b);
+  });
+
+
+  /* ------------------------------- simulador ------------------------------ */
+  /* Vive dentro do slide 5. Toca sozinho quando o slide entra, para sozinho
+     quando sai. P repete, , e . andam passo a passo.                        */
+
+  var sim = (function () {
+    var root = document.getElementById("slideSim");
+    if (!root) return { enter: function () {}, leave: function () {} };
+
+    var passos = [
+      {
+        on: ["s-volume", "s-pg"], dur: 5600,
+        say: "<b>Antes dos containers, o Compose cria os volumes.</b> Eles são objetos próprios do Docker e não pertencem a container nenhum."
+      },
+      {
+        on: ["s-nginx-zone", "s-nginx", "s-zone", "s-app", "s-efemera", "s-db-zone", "s-db"], dur: 6400,
+        say: "<b>Os três containers sobem — e os três são igualmente descartáveis.</b> Cada um tem uma camada de escrita própria, que morre com ele. O que muda é o que existe <i>embaixo</i> de cada um."
+      },
+      {
+        on: ["s-nav", "s-c-nav", "s-nginx-zone", "s-nginx"], fly: ["s-c-nav"], dur: 5200,
+        say: "<b>Chega uma requisição</b> na única porta publicada, a 8080 do nginx — com a sessão do usuário, porque sem login a home nem abre."
+      },
+      {
+        on: ["s-nginx-zone", "s-nginx", "s-c-proxy", "s-zone", "s-app"], fly: ["s-c-proxy"], dur: 6000,
+        say: "<b>O nginx encaminha e acabou o papel dele.</b> Proxy reverso e nada mais — é o único dos três sem volume, porque não há nada nele que precise sobreviver."
+      },
+      {
+        on: ["s-app", "s-c-vol", "s-l-vol", "s-volume"], fly: ["s-c-vol"], dur: 6400,
+        say: "<b>A aplicação confere a sessão e grava os bytes no volume.</b> O <code>MEDIA_ROOT</code> do Django <b>é</b> o ponto de montagem — gravar no disco é gravar no volume."
+      },
+      {
+        on: ["s-app", "s-c-db", "s-db-zone", "s-db", "s-c-pg", "s-pg"], fly: ["s-c-db"], dur: 6400,
+        say: "<b>Só o caminho vai para o banco</b>, em uma coluna VARCHAR. E o banco faz o mesmo que a aplicação: <b>o container é descartável, os dados ficam no volume <code>postgres_data</code></b>."
+      },
+      {
+        on: ["s-volume", "s-c-vol", "s-zone", "s-app", "s-c-proxy", "s-nginx-zone", "s-nginx", "s-c-nav", "s-nav"],
+        fly: ["s-c-vol", true], fly2: ["s-c-nav"], dur: 6400,
+        say: "<b>No download, a aplicação lê de volta do volume</b> e devolve pelo nginx. Como o proxy não tem acesso ao volume, quem lê é o Django."
+      },
+      {
+        on: ["s-volume", "s-pg"], dur: 6800,
+        say: "<b><code>docker compose down</code>:</b> os <b>três</b> containers deixam de existir, com as camadas de escrita deles. <b>Os volumes ficam</b> — os arquivos e o banco continuam intactos."
+      },
+      {
+        on: ["s-nginx-zone", "s-nginx", "s-zone", "s-app", "s-c-vol", "s-volume", "s-db-zone", "s-db", "s-c-pg", "s-pg"], fly: ["s-c-vol", true], dur: 6800,
+        say: "<b><code>up -d</code>:</b> containers novos, das mesmas imagens — e cada um remonta <b>o mesmo volume</b>. O arquivo continua listado, e o banco continua com os registros."
+      },
+      {
+        on: ["s-volume", "s-pg"], danger: true, dur: 6400,
+        say: "<b><code>down -v</code> é o único que apaga.</b> A flag leva <b>todos</b> os volumes junto — arquivos e banco. É a diferença entre persistente e volátil."
+      }
+    ];
+
+    var i = 0, tocando = false, timer = null, tk = 0, ativo = false;
+    var vol = document.getElementById("s-volume");
+
+    function fly(pathId, reverse, dot, meu) {
+      var path = document.getElementById(pathId);
+      var d = document.getElementById(dot);
+      if (!path || !d) return;
+      var len = path.getTotalLength(), dur = 1400, t0 = null;
+      d.style.opacity = "1";
+      function frame(now) {
+        if (meu !== tk) { d.style.opacity = "0"; return; }
+        if (t0 === null) t0 = now;
+        var x = Math.min(1, (now - t0) / dur);
+        var e = x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+        var pt = path.getPointAtLength((reverse ? 1 - e : e) * len);
+        d.setAttribute("cx", pt.x); d.setAttribute("cy", pt.y);
+        if (x < 1) requestAnimationFrame(frame);
+        else setTimeout(function () { if (meu === tk) d.style.opacity = "0"; }, 240);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    function pinta() {
+      tk++;
+      var meu = tk, s = passos[i];
+
+      root.querySelectorAll(".el").forEach(function (el) { el.classList.remove("on"); });
+      (s.on || []).forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.add("on");
+      });
+
+      // o volume muda de cara quando o -v entra em cena
+      var rect = vol ? vol.querySelector("rect") : null;
+      if (rect) rect.setAttribute("class", s.danger ? "box-s" : "box-k");
+      var ttl = document.getElementById("s-vol-title");
+      if (ttl) {
+        ttl.textContent = s.danger ? "VOLUME media_data — REMOVIDO" : "VOLUME media_data — PERMANENTE";
+        ttl.style.fill = s.danger ? "var(--stop)" : "var(--ok)";
+      }
+      var f = document.getElementById("s-vol-file");
+      var n = document.getElementById("s-vol-note");
+      if (f) f.textContent = s.danger ? "volume apagado" : "uploads/relatorio.pdf";
+      if (n) n.textContent = s.danger
+        ? "a flag -v remove o volume junto dos containers"
+        : "fora dos containers, montado só na aplicação";
+
+      document.getElementById("simCount").textContent = (i + 1) + " / " + passos.length;
+      document.getElementById("simSay").innerHTML = s.say;
+
+      setTimeout(function () {
+        if (meu !== tk) return;
+        if (s.fly) fly(s.fly[0], s.fly[1], "simPacket", meu);
+        if (s.fly2) fly(s.fly2[0], s.fly2[1], "simPacket2", meu);
+      }, 400);
+
+      clearTimeout(timer);
+      if (tocando) {
+        timer = setTimeout(function () {
+          if (i < passos.length - 1) { i++; pinta(); }
+          else toca(false);
+        }, s.dur);
+      }
+    }
+
+    function toca(on) {
+      tocando = on;
+      document.getElementById("simPlay").textContent = on ? "❚❚ Pausar" : "▶ Tocar";
+      if (!on) clearTimeout(timer); else pinta();
+    }
+
+    function vai(n) {
+      i = Math.max(0, Math.min(passos.length - 1, n));
+      pinta();
+    }
+
+    document.getElementById("simPlay").addEventListener("click", function (e) {
+      e.stopPropagation(); toca(!tocando);
+    });
+    document.getElementById("simNext").addEventListener("click", function (e) {
+      e.stopPropagation(); toca(false); vai(i + 1);
+    });
+    document.getElementById("simPrev").addEventListener("click", function (e) {
+      e.stopPropagation(); toca(false); vai(i - 1);
+    });
+
+    return {
+      ativo: function () { return ativo; },
+      enter: function () { ativo = true; i = 0; toca(true); },
+      leave: function () { ativo = false; toca(false); tk++; },
+      play: function () { toca(!tocando); },
+      step: function (d) { toca(false); vai(i + d); }
+    };
+  })();
+
+  /* ------------------------------- cronômetro ----------------------------- */
+
+  var running = false, started = 0, elapsed = 0;
+  var TARGET = 15 * 60;
+  var clock = document.getElementById("clock");
+  var btnTimer = document.getElementById("btnTimer");
+
+  function mmss(s) {
+    var m = Math.floor(s / 60), r = Math.floor(s % 60);
+    return String(m).padStart(2, "0") + ":" + String(r).padStart(2, "0");
+  }
+  function tick() {
+    var t = elapsed + (running ? (Date.now() - started) / 1000 : 0);
+    clock.textContent = mmss(t) + " / " + mmss(TARGET);
+    clock.classList.toggle("over", t > TARGET);
+  }
+  btnTimer.addEventListener("click", function () {
+    if (running) { elapsed += (Date.now() - started) / 1000; running = false; }
+    else { started = Date.now(); running = true; }
+    btnTimer.setAttribute("aria-pressed", running ? "true" : "false");
+    tick();
+  });
+  setInterval(tick, 500);
+
+  /* ---------------------------------- tema -------------------------------- */
+
+  document.getElementById("btnTheme").addEventListener("click", function () {
+    var root = document.documentElement;
+    // o escuro do portfólio e o padrão; o claro e o plano B do projetor
+    var claro = root.getAttribute("data-theme") === "light";
+    if (claro) root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", "light");
+  });
+
+  /* -------------------------------- teclado ------------------------------- */
+
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var k = e.key;
+
+    if (k === "Escape") { panel(helpEl, null, false); panel(ovEl, btnOv, false); return; }
+    if (k === "ArrowRight" || k === "PageDown" || k === " " || k === "Spacebar") { e.preventDefault(); go(1); }
+    else if (k === "ArrowLeft" || k === "PageUp") { e.preventDefault(); go(-1); }
+    else if (k === "Home") { e.preventDefault(); show(0); }
+    else if (k === "End") { e.preventDefault(); show(slides.length - 1); }
+    else if (k === "n" || k === "N") { panel(notesEl, btnNotes, notesEl.hidden); }
+    else if (k === "o" || k === "O") { panel(ovEl, btnOv, ovEl.hidden); }
+    else if (k === "t" || k === "T") { btnTimer.click(); }
+    else if (k === "f" || k === "F") {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(function () {});
+      }
+    }
+    else if (k === "p" || k === "P") { sim.play(); }
+    else if (k === ",") { sim.step(-1); }
+    else if (k === ".") { sim.step(1); }
+    else if (k === "?") { panel(helpEl, null, helpEl.hidden); }
+    else if (k >= "1" && k <= "9") { show(parseInt(k, 10) - 1); }
+  });
+
+  /* ------------------------------ clique/toque ---------------------------- */
+
+  stage.addEventListener("click", function (e) {
+    if (readingMode()) return;
+    if (e.target.closest("a") || e.target.closest(".sim-bar")) return;
+    go(e.clientX < window.innerWidth * 0.28 ? -1 : 1);
+  });
+
+  /* --------------------------------- início ------------------------------- */
+
+  window.addEventListener("resize", fit);
+  fit();
+
+  var m = /^#s(\d+)$/.exec(location.hash || "");
+  show(m ? parseInt(m[1], 10) - 1 : 0);
+})();
+</script>
+
+</body>
+</html>
