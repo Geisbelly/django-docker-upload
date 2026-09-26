@@ -1,5 +1,7 @@
 # Django + Gunicorn + Nginx + PostgreSQL com upload em volume
 
+Geisbelly Victória · Nicole França Martins
+
 > **Documentação técnica da solução:** [`DOCUMENTACAO.md`](DOCUMENTACAO.md) —
 > arquitetura, imagem Docker, orquestração, comunicação entre containers, proxy
 > reverso, persistência, fluxo do upload e análise técnica.
@@ -191,13 +193,16 @@ docker compose logs -f nginx
 
 ## Material de apresentação
 
+Tudo da defesa fica em [`defesa/`](defesa/); a documentação técnica exigida pelo
+enunciado é a [`DOCUMENTACAO.md`](DOCUMENTACAO.md), na raiz.
+
 | Arquivo | O quê |
 |---|---|
 | **`DOCUMENTACAO.md`** | **documentação técnica da solução** — os oito itens pedidos no enunciado da defesa |
-| `apresentacao-defesa.html` | deck da defesa, 8 slides, com simulador animado no slide 5 (`N` notas, `O` índice, `P` simulador, `T` cronômetro, `F` tela cheia) |
-| `DEFESA.md` | roteiro, decisões, funcionamento e perguntas prováveis |
+| [`defesa/apresentacao-defesa.html`](defesa/apresentacao-defesa.html) | deck da defesa, 14 slides, com simulador animado no slide 8 (`N` notas, `O` índice, `P` simulador, `T` cronômetro, `F` tela cheia) |
+| [`defesa/DEFESA.md`](defesa/DEFESA.md) | roteiro da fala, checklist, demo e perguntas prováveis |
 
-Os dois primeiros abrem direto no navegador, sem instalar nada.
+O deck abre direto no navegador, sem instalar nada.
 
 ## Comandos úteis
 
@@ -212,6 +217,10 @@ docker volume inspect django-docker-upload_media_data
 
 ```
 .
+├── DOCUMENTACAO.md         # documentação técnica (os 8 itens do enunciado)
+├── defesa/                 # material da apresentação
+│   ├── apresentacao-defesa.html
+│   └── DEFESA.md
 ├── Dockerfile              # imagem do Django + Gunicorn
 ├── entrypoint.sh           # espera o banco, migra, collectstatic, cria admin
 ├── docker-compose.yml
@@ -219,7 +228,8 @@ docker volume inspect django-docker-upload_media_data
 ├── .env.example
 ├── nginx/
 │   ├── Dockerfile
-│   └── default.conf        # proxy reverso + /static/ e /media/
+│   ├── entrypoint.sh       # gera o certificado proprio na primeira subida
+│   └── default.conf.template   # proxy reverso + TLS + logs
 └── app/
     ├── manage.py
     ├── config/             # settings, urls, wsgi

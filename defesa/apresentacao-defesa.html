@@ -699,12 +699,12 @@ code { font-family: var(--mono); font-size: .92em; }
 
   <div class="meta">
     <div>
-      <p class="author">Geisbelly Victória</p>
+      <p class="author">Geisbelly Victória &nbsp;·&nbsp; Nicole França Martins</p>
       <p class="repo">github.com/Geisbelly/django-docker-upload</p>
     </div>
   </div>
 
-  <div class="notes-src" hidden>Abertura (30s). Aplicação Django containerizada em três serviços, com upload de arquivo que sobrevive à destruição dos containers. Vou mostrar a arquitetura, as decisões, como a persistência funciona, e no fim uma demo ao vivo provando que o arquivo não se perde.</div>
+  <div class="notes-src" hidden>Abertura (30s). Apresentar as duas e dizer o que é o projeto: aplicação Django containerizada em três serviços, com upload de arquivo que sobrevive à destruição dos containers. Vamos mostrar a arquitetura, as decisões, como a persistência funciona, e no fim uma demo ao vivo provando que o arquivo não se perde. Combinar antes quem fala cada parte.</div>
 </section>
 
 <!-- ============================= 2 · escopo ============================= -->
@@ -1026,8 +1026,8 @@ code { font-family: var(--mono); font-size: .92em; }
 <span class="kw">server</span> {                       <span class="cm"># HTTPS: o proxy</span>
     listen 443 ssl;
     ssl_certificate /etc/nginx/certs/server.crt;
-    access_log /var/log/nginx/access.log detalhado;
-    access_log /dev/stdout detalhado;
+    access_log /var/log/nginx/access.log detalhado;   <span class="cm"># volume</span>
+    access_log /dev/stdout detalhado;                <span class="cm"># docker logs</span>
     <span class="kw">location</span> / {
         proxy_pass http://django;
         proxy_set_header Host $http_host;
@@ -1041,7 +1041,7 @@ code { font-family: var(--mono); font-size: .92em; }
       <li><code>client_max_body_size</code> devolve <b>413</b> sem chamar a aplicação.</li>
       <li><b>O TLS termina aqui</b>, em TLS 1.2/1.3. Certificado autoassinado, gerado no primeiro boot e guardado em volume.</li>
       <li>Os <code>X-Forwarded-*</code> dizem ao Django que a origem era HTTPS.</li>
-      <li>O log vai para o <b>volume e para o stdout</b>, com o tempo da requisição e o do upstream.</li>
+      <li>O log guarda o tempo da requisição e o do upstream — a diferença separa a aplicação do caminho.</li>
     </ul>
   </div>
 
@@ -1540,6 +1540,7 @@ code { font-family: var(--mono); font-size: .92em; }
     </div>
     <div class="card">
       <p class="author" style="margin:0">Geisbelly Victória</p>
+      <p class="author" style="margin:0">Nicole França Martins</p>
       <p class="mono small">github.com/Geisbelly/django-docker-upload</p>
     </div>
   </div>
